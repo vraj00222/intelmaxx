@@ -166,19 +166,25 @@ export default function WarRoom() {
           </div>
         </div>
 
-        <footer className="mt-10 flex flex-col items-center gap-2 border-t border-[var(--border-subtle)] pt-5 text-[10px] tracking-[0.3em] text-[var(--text-muted)] sm:flex-row sm:justify-between">
-          <span>INTELMAXXING · OPERATION INNOVATION</span>
-          <span>
-            POWERED BY · GEMMA 4 26B · ELEVENLABS · HN · GITHUB
-          </span>
-          <span>
+        <footer className="mt-10 border-t border-[var(--border-subtle)] pt-5 text-[10px] tracking-[0.3em] text-[var(--text-muted)]">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>INTELMAXXING · OPERATION INNOVATION</span>
+            <span>POWERED BY · GEMMA 4 · ELEVENLABS</span>
             <a
               href="https://intelmaxxing.tech"
               className="hover:text-[var(--accent-amber)]"
             >
               INTELMAXXING.TECH
             </a>
-          </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 border-t border-[var(--border-subtle)]/60 text-[9.5px] tracking-[0.22em]">
+            <span className="text-[var(--text-secondary)]">DATA SOURCES</span>
+            <span className="opacity-40">|</span>
+            <a href="https://news.ycombinator.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">HACKER NEWS</a>
+            <a href="https://remoteok.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">REMOTEOK</a>
+            <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">GITHUB</a>
+            <a href="https://startups.gallery" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">STARTUPS.GALLERY</a>
+          </div>
         </footer>
       </main>
     </div>

@@ -37,6 +37,7 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
           <Chip emphasis>{f.funding_amount}</Chip>
           {f.industry && <Chip muted>{f.industry}</Chip>}
           {f.likely_to_hire ? <Chip offgrid>LIKELY TO HIRE</Chip> : <Chip offgrid>OFF-GRID</Chip>}
+          <SourceChip url={f.url} fallback="HN" />
         </div>
 
         <p className="mt-3 text-[13px] leading-snug">{f.one_liner}</p>
@@ -73,6 +74,7 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
           <Chip>{s.signal_type.replace("_", " ")}</Chip>
           <Chip muted>{s.urgency}</Chip>
           <Chip offgrid>NOT ON LINKEDIN</Chip>
+          <SourceChip url={s.apply_url || s.source_url} fallback="HN" />
         </div>
 
         <p className="mt-3 border-l-2 border-black/20 pl-3 text-[12.5px] italic leading-snug">
@@ -120,6 +122,7 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
         {o.has_contributing_guide && <Chip>CONTRIB GUIDE</Chip>}
         <Chip muted>HIRE CORR · {o.oss_hiring_correlation}</Chip>
         <Chip offgrid>BACKDOOR</Chip>
+        <SourceChip url={o.repo_url} fallback="GITHUB" />
       </div>
 
       <p className="mt-3 text-[13px] leading-snug">
@@ -251,6 +254,31 @@ function Footer({
       ) : null}
     </div>
   );
+}
+
+function SourceChip({ url, fallback }: { url?: string | null; fallback?: string }) {
+  const label = sourceLabel(url, fallback);
+  if (!label) return null;
+  return (
+    <span className="rounded-sm border border-black/15 bg-black/[0.04] px-2 py-0.5 font-mono text-[9.5px] tracking-[0.14em] text-black/55">
+      SRC · {label}
+    </span>
+  );
+}
+
+function sourceLabel(url?: string | null, fallback?: string): string {
+  if (!url) return fallback || "";
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host.includes("news.ycombinator.com")) return "HACKER NEWS";
+    if (host.includes("remoteok")) return "REMOTEOK";
+    if (host.includes("github.com")) return "GITHUB";
+    if (host.includes("startups.gallery")) return "STARTUPS.GALLERY";
+    if (host.includes("ycombinator.com")) return "Y COMBINATOR";
+    return host.toUpperCase();
+  } catch {
+    return fallback || "";
+  }
 }
 
 function LinkOut({ url, label, muted }: { url: string; label: string; muted?: boolean }) {
