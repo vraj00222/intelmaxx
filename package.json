@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:fresh": "./scripts/kill-dev.sh && next dev",
+    "dev:ollama": "./scripts/dev-ollama.sh",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
