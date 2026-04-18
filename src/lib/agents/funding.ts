@@ -1,5 +1,6 @@
 import { gemmaJSON } from "@/lib/gemma";
 import { searchStories } from "@/lib/datasources/hackernews";
+import { matchStartupsGallery } from "@/lib/datasources/startupsgallery";
 import type { FundingIntel, MissionBrief } from "./types";
 
 export async function runFoxhound(mission: MissionBrief): Promise<FundingIntel[]> {
@@ -69,7 +70,26 @@ ${JSON.stringify(evidence, null, 2)}`;
     ], { max_tokens: 1800, temperature: 0.25 });
 
     const arr = Array.isArray(out) ? out : out.results || [];
-    return arr.slice(0, 6);
+    const picked = arr.slice(0, 6);
+
+    // Mark "likely to hire" for funders that closed within the last 180 days.
+    const now = Date.now();
+    for (const f of picked) {
+      const ts = Date.parse(f.date || "");
+      if (!Number.isNaN(ts) && now - ts < 180 * 86400 * 1000) {
+        f.likely_to_hire = true;
+      }
+    }
+
+    // Enrich with startups.gallery refs (adds gallery_url when tracked there).
+    const names = picked.map((f) => f.company_name).filter(Boolean);
+    const sg = await matchStartupsGallery(names);
+    for (const f of picked) {
+      const hit = sg.get((f.company_name || "").toLowerCase());
+      if (hit) f.gallery_url = hit.url;
+    }
+
+    return picked;
   } catch {
     return [];
   }

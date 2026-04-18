@@ -17,16 +17,21 @@ export type FundingIntel = {
   date: string;
   relevance_score: number;
   one_liner: string;
+  likely_to_hire?: boolean;
+  gallery_url?: string;
+  company_url?: string;
 };
 
 export type HiringSignal = {
   company_name: string;
   signal_type: "explicit_hiring" | "implicit_growth" | "team_expansion";
   source_url: string;
+  apply_url?: string | null;
   signal_text: string;
   role_hints: string[];
   confidence: "high" | "medium" | "low";
   urgency: "fresh" | "recent" | "aging";
+  gallery_url?: string;
 };
 
 export type OSSIntel = {

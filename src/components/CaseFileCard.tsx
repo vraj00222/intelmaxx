@@ -36,7 +36,7 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
           <Chip>{f.funding_stage}</Chip>
           <Chip emphasis>{f.funding_amount}</Chip>
           {f.industry && <Chip muted>{f.industry}</Chip>}
-          <Chip offgrid>OFF-GRID</Chip>
+          {f.likely_to_hire ? <Chip offgrid>LIKELY TO HIRE</Chip> : <Chip offgrid>OFF-GRID</Chip>}
         </div>
 
         <p className="mt-3 text-[13px] leading-snug">{f.one_liner}</p>
@@ -48,7 +48,11 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
           </div>
         ) : null}
 
-        <Footer url={f.url} date={f.date} />
+        <Footer
+          primary={{ url: f.url, label: "Source" }}
+          secondary={f.gallery_url ? { url: f.gallery_url, label: "startups.gallery" } : undefined}
+          date={f.date}
+        />
       </Shell>
     );
   }
@@ -82,7 +86,20 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
           </div>
         ) : null}
 
-        <Footer url={s.source_url} />
+        <Footer
+          primary={
+            s.apply_url
+              ? { url: s.apply_url, label: "Apply" }
+              : { url: s.source_url, label: "Source" }
+          }
+          secondary={
+            s.apply_url && s.source_url && s.source_url !== s.apply_url
+              ? { url: s.source_url, label: "Source" }
+              : s.gallery_url
+              ? { url: s.gallery_url, label: "startups.gallery" }
+              : undefined
+          }
+        />
       </Shell>
     );
   }
@@ -110,7 +127,7 @@ export default function CaseFileCard({ item, rot = 1, hot }: Props) {
         {o.entry_strategy}
       </p>
 
-      <Footer url={o.repo_url} />
+      <Footer primary={{ url: o.repo_url, label: "View Repo" }} />
     </Shell>
   );
 }
@@ -211,24 +228,45 @@ function Chip({
   );
 }
 
-function Footer({ url, date }: { url?: string; date?: string }) {
-  if (!url) return null;
+type FooterLink = { url?: string | null; label: string };
+
+function Footer({
+  primary,
+  secondary,
+  date,
+}: {
+  primary: FooterLink;
+  secondary?: FooterLink;
+  date?: string;
+}) {
+  if (!primary.url && !secondary?.url) return null;
   return (
-    <div className="mt-4 flex items-center justify-between border-t border-black/15 pt-3 text-[10px] tracking-[0.14em] uppercase">
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="group inline-flex items-center gap-1 text-black/70 hover:text-black"
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M7 17 17 7M7 7h10v10" />
-        </svg>
-        Open Source
-      </a>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-black/15 pt-3 text-[10px] tracking-[0.14em] uppercase">
+      <div className="flex flex-wrap gap-3">
+        {primary.url ? <LinkOut url={primary.url} label={primary.label} /> : null}
+        {secondary?.url ? <LinkOut url={secondary.url} label={secondary.label} muted /> : null}
+      </div>
       {date ? (
         <span className="text-black/50">{new Date(date).toLocaleDateString()}</span>
       ) : null}
     </div>
+  );
+}
+
+function LinkOut({ url, label, muted }: { url: string; label: string; muted?: boolean }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex items-center gap-1 hover:text-black ${
+        muted ? "text-black/50" : "text-black/70"
+      }`}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M7 17 17 7M7 7h10v10" />
+      </svg>
+      {label}
+    </a>
   );
 }

@@ -5,6 +5,8 @@ import {
   findWhoIsHiringThread,
   fetchHiringComments,
 } from "@/lib/datasources/hackernews";
+import { searchRemoteOK } from "@/lib/datasources/remoteok";
+import { matchStartupsGallery } from "@/lib/datasources/startupsgallery";
 import type { HiringSignal, MissionBrief } from "./types";
 
 export async function runWiretap(mission: MissionBrief): Promise<HiringSignal[]> {
@@ -42,6 +44,14 @@ export async function runWiretap(mission: MissionBrief): Promise<HiringSignal[]>
   const showHN = await searchShowHN(`${industry} ${kw}`, 10).catch(() => []);
   const storyHits = await searchStories(`${industry} hiring ${roleType}`, 8).catch(() => []);
 
+  // 3. RemoteOK — real job postings, often from off-LinkedIn startups.
+  const remoteKeywords = [
+    industry,
+    roleType,
+    ...mission.keywords.slice(0, 4),
+  ].filter(Boolean);
+  const remoteJobs = await searchRemoteOK(remoteKeywords, 12).catch(() => []);
+
   const evidence = {
     who_is_hiring: hiringComments,
     show_hn: showHN.slice(0, 10).map((h) => ({
@@ -56,12 +66,21 @@ export async function runWiretap(mission: MissionBrief): Promise<HiringSignal[]>
       url: h.url,
       date: h.created_at,
     })),
+    remoteok_jobs: remoteJobs.slice(0, 10).map((j) => ({
+      company_name: j.company,
+      position: j.position,
+      tags: (j.tags || []).slice(0, 6),
+      location: j.location,
+      url: j.apply_url || j.url,
+      date: j.date,
+    })),
   };
 
   if (
     evidence.who_is_hiring.length === 0 &&
     evidence.show_hn.length === 0 &&
-    evidence.story_mentions.length === 0
+    evidence.story_mentions.length === 0 &&
+    evidence.remoteok_jobs.length === 0
   ) {
     return [];
   }
@@ -73,26 +92,29 @@ Hacker News "Who is hiring" comments posted by founders/CTOs, Show HN launches, 
 organic founder chatter. These are off-grid leads the candidate will not find on any
 job board. Reflect this value in your output.
 
-You receive three evidence streams:
+You receive four evidence streams:
 - who_is_hiring: comments from the latest "Ask HN: Who is hiring?" thread
 - show_hn: recent Show HN posts (companies actively building = likely hiring)
 - story_mentions: story titles matching the industry + hiring keywords
+- remoteok_jobs: job postings from RemoteOK (off-LinkedIn remote job board)
 
 For each real hiring signal you find, emit an object:
 {
   "company_name": string,
   "signal_type": "explicit_hiring" | "implicit_growth" | "team_expansion",
-  "source_url": string,
-  "signal_text": string,       // <= 200 chars, verbatim or very tight summary
-  "role_hints": string[],      // roles the company likely wants
+  "source_url": string,          // HN link, company blog, or RemoteOK listing
+  "apply_url": string | null,    // direct application link if known (RemoteOK usually has one)
+  "signal_text": string,         // <= 200 chars, verbatim or very tight summary
+  "role_hints": string[],        // roles the company likely wants
   "confidence": "high" | "medium" | "low",
   "urgency": "fresh" | "recent" | "aging"
 }
 
 Rules:
+- RemoteOK jobs are ALWAYS explicit_hiring, high confidence. Use the job's apply URL.
 - Prefer explicit hiring posts from who_is_hiring (these are highest confidence).
 - Infer company names from the text; if unclear, use "unknown" and skip low-value signals.
-- Return at most 6 items, highest confidence first.
+- Return at most 8 items, highest confidence first.
 - Respond with ONLY a JSON array. No fences, no preamble.`;
 
   const user = `MISSION BRIEF:
@@ -110,7 +132,16 @@ ${JSON.stringify(evidence, null, 2)}`;
       { max_tokens: 2000, temperature: 0.3 }
     );
     const arr = Array.isArray(out) ? out : out.results || [];
-    return arr.slice(0, 6);
+    const signals = arr.slice(0, 8);
+
+    // Enrich with startups.gallery company page link when we have a match.
+    const names = signals.map((s) => s.company_name).filter(Boolean);
+    const sgMatches = await matchStartupsGallery(names);
+    for (const s of signals) {
+      const hit = sgMatches.get((s.company_name || "").toLowerCase());
+      if (hit) s.gallery_url = hit.url;
+    }
+    return signals;
   } catch {
     return [];
   }
