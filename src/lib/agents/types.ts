@@ -52,6 +52,7 @@ export type TopTarget = {
 export type ProfilerReport = {
   top_targets: TopTarget[];
   intel_briefing_text: string;
+  intel_briefing_voice: string;
   total_companies_analyzed: number;
   total_signals_detected: number;
 };

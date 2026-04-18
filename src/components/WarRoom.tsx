@@ -144,6 +144,7 @@ export default function WarRoom() {
             {payload ? (
               <VoiceBriefing
                 briefingText={payload.profiler.intel_briefing_text}
+                voiceHook={payload.profiler.intel_briefing_voice}
                 caseNumber={payload.case_number}
               />
             ) : null}

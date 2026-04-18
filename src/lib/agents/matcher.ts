@@ -33,6 +33,15 @@ Your job:
    that sounds like a case debrief. Reference specific companies and specific signals.
    Open with "Case number [use the case_number field]". Reference each agent codename
    at least once. End with a directive: "Move fast. Case remains open."
+5. Write "intel_briefing_voice": a SHORT punchy audio hook, 30-40 words MAX (10-15 sec spoken).
+   Style: thick spy / noir detective voice over the top of Gen-Z slang — like if James Bond
+   went to TikTok. Drop one subtle Gen-Z phrase ("no cap", "locked in", "it's giving", "real
+   ones", "the drop", "moving different") naturally into the spy delivery — don't force more
+   than one. Must name the TOP target company and one concrete signal. End with a
+   mic-drop one-liner. Examples of tone:
+     - "Case cracked. [Company] just closed Series A — and they're hiring on HN, no cap. Off-grid, off-LinkedIn. Move."
+     - "Intel dropped. [Company] — lean team, fresh money, good-first-issues wide open. This one's locked in. Go."
+   Keep it tight. No fluff. No case number. No "move fast / case remains open".
 
 Respond ONLY with a JSON object:
 {
@@ -43,6 +52,7 @@ Respond ONLY with a JSON object:
       "rationale": "<= 30 words" }, ...
   ],
   "intel_briefing_text": "...",
+  "intel_briefing_voice": "...",
   "total_companies_analyzed": number,
   "total_signals_detected": number
 }
@@ -89,6 +99,9 @@ Stats you can use if helpful:
       intel_briefing_text:
         out.intel_briefing_text ||
         buildFallbackBriefing(mission, funding, signals, oss, caseNumber),
+      intel_briefing_voice:
+        out.intel_briefing_voice ||
+        buildFallbackVoiceHook(funding, signals, oss),
       total_companies_analyzed: out.total_companies_analyzed ?? totalCompanies.size,
       total_signals_detected: out.total_signals_detected ?? totalSignals,
     };
@@ -96,10 +109,32 @@ Stats you can use if helpful:
     return {
       top_targets: synthesizeFallback(funding, signals, oss),
       intel_briefing_text: buildFallbackBriefing(mission, funding, signals, oss, caseNumber),
+      intel_briefing_voice: buildFallbackVoiceHook(funding, signals, oss),
       total_companies_analyzed: totalCompanies.size,
       total_signals_detected: totalSignals,
     };
   }
+}
+
+function buildFallbackVoiceHook(
+  funding: FundingIntel[],
+  signals: HiringSignal[],
+  oss: OSSIntel[]
+): string {
+  const top =
+    signals[0]?.company_name ||
+    funding[0]?.company_name ||
+    oss[0]?.company_name ||
+    "target";
+  const hint =
+    signals[0]?.signal_type === "explicit_hiring"
+      ? "hiring on HN right now"
+      : funding[0]
+      ? `just closed ${funding[0].funding_stage}`
+      : oss[0]
+      ? `${oss[0].good_first_issues_count} good-first-issues wide open`
+      : "moving different";
+  return `Intel dropped. ${top} — ${hint}. Off the LinkedIn grid, no cap. This one's locked in. Go.`;
 }
 
 function synthesizeFallback(

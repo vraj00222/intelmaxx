@@ -5,7 +5,8 @@ let _client: ElevenLabsClient | null = null;
 
 function getClient() {
   if (_client) return _client;
-  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const apiKey =
+    process.env.ELEVENLABS_API_KEY || process.env.ELEVEN_LABS_API_KEY;
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY not set");
   _client = new ElevenLabsClient({ apiKey });
   return _client;
@@ -14,6 +15,8 @@ function getClient() {
 /**
  * Generate a detective-style voice briefing.
  * Voice ID: JBFqnCBsd6RMkjVDRZzb ("George" — deep, authoritative).
+ * Voice settings tuned for a thick spy / noir delivery: lower stability
+ * (more expressive), higher style exaggeration (more character).
  */
 export async function generateBriefing(text: string): Promise<Buffer> {
   const client = getClient();
@@ -24,9 +27,9 @@ export async function generateBriefing(text: string): Promise<Buffer> {
     modelId: "eleven_multilingual_v2",
     outputFormat: "mp3_44100_128",
     voiceSettings: {
-      stability: 0.55,
-      similarityBoost: 0.8,
-      style: 0.45,
+      stability: 0.38,
+      similarityBoost: 0.85,
+      style: 0.78,
       useSpeakerBoost: true,
     },
   });

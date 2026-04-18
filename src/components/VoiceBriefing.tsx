@@ -4,17 +4,19 @@ import { useEffect, useRef, useState } from "react";
 
 type Props = {
   briefingText: string;
+  voiceHook?: string;
   caseNumber?: string | null;
 };
 
 type Phase = "idle" | "loading" | "ready" | "playing" | "error";
 
-export default function VoiceBriefing({ briefingText, caseNumber }: Props) {
+export default function VoiceBriefing({ briefingText, voiceHook, caseNumber }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [duration, setDuration] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [mode, setMode] = useState<"short" | "long">("short");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Reset when briefing text changes (new investigation)
@@ -24,17 +26,19 @@ export default function VoiceBriefing({ briefingText, caseNumber }: Props) {
     setElapsed(0);
     setDuration(0);
     setErrorMsg(null);
-  }, [briefingText]);
+  }, [briefingText, mode]);
 
   async function fetchAudio() {
-    if (!briefingText) return;
+    const textToSpeak =
+      mode === "short" && voiceHook ? voiceHook : briefingText;
+    if (!textToSpeak) return;
     setPhase("loading");
     setErrorMsg(null);
     try {
       const res = await fetch("/api/briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: briefingText }),
+        body: JSON.stringify({ text: textToSpeak }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -80,6 +84,33 @@ export default function VoiceBriefing({ briefingText, caseNumber }: Props) {
         <span>INTEL BRIEFING · AUDIO DEBRIEF</span>
         <span className="h-px flex-1 bg-[var(--border-subtle)]" />
       </div>
+
+      {voiceHook ? (
+        <div className="mb-2 flex items-center gap-1 text-[10px] tracking-[0.22em]">
+          <button
+            type="button"
+            onClick={() => setMode("short")}
+            className={`rounded-sm border px-2 py-1 transition ${
+              mode === "short"
+                ? "border-[var(--accent-amber)] bg-[var(--accent-amber)]/20 text-[var(--accent-amber)]"
+                : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent-amber)]"
+            }`}
+          >
+            ⚡ SPY HOOK · 15s
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("long")}
+            className={`rounded-sm border px-2 py-1 transition ${
+              mode === "long"
+                ? "border-[var(--accent-amber)] bg-[var(--accent-amber)]/20 text-[var(--accent-amber)]"
+                : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent-amber)]"
+            }`}
+          >
+            🎙 FULL DEBRIEF
+          </button>
+        </div>
+      ) : null}
 
       <div className="hud-corners relative overflow-hidden rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] p-5">
         <div className="flex flex-col gap-5 md:flex-row md:items-center">
@@ -171,10 +202,10 @@ export default function VoiceBriefing({ briefingText, caseNumber }: Props) {
 
         <details className="mt-5 rounded-sm border border-[var(--border-subtle)] bg-black/20 p-3 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
           <summary className="cursor-pointer text-[10px] tracking-[0.22em] text-[var(--text-muted)]">
-            TRANSCRIPT
+            TRANSCRIPT · {mode === "short" ? "SPY HOOK" : "FULL DEBRIEF"}
           </summary>
           <p className="mt-3 whitespace-pre-wrap font-mono text-[var(--text-primary)]/90">
-            {briefingText}
+            {mode === "short" && voiceHook ? voiceHook : briefingText}
           </p>
         </details>
       </div>
