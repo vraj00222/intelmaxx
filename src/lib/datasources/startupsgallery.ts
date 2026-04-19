@@ -55,6 +55,36 @@ export async function getStartupsGalleryIndex(): Promise<StartupRef[]> {
 }
 
 /**
+ * Keyword-matched candidates from startups.gallery. Unlike `matchStartupsGallery`
+ * this takes *mission terms* (industry + keywords) and returns gallery refs
+ * whose slugs contain any of them. Used as a diversity source in the dossier
+ * pool so it's not 100% YC.
+ */
+export async function searchStartupsGallery(
+  terms: string[],
+  limit: number = 12
+): Promise<StartupRef[]> {
+  const refs = await getStartupsGalleryIndex();
+  if (!refs.length) return [];
+  const needles = terms
+    .map((t) => (t || "").toLowerCase().trim())
+    .filter((t) => t.length >= 3);
+  if (!needles.length) return [];
+  const scored = refs
+    .map((r) => {
+      const haystack = `${r.slug} ${r.name}`.toLowerCase();
+      let score = 0;
+      for (const n of needles) if (haystack.includes(n)) score += 1;
+      return { r, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((x) => x.r);
+  return scored;
+}
+
+/**
  * Given a list of company names, returns a map of normalized name → ref.
  * Used to mark "also tracked on startups.gallery" / enrich with links.
  */

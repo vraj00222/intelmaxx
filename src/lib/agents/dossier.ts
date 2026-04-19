@@ -18,7 +18,8 @@ import { gemmaJSON, type Provider } from "@/lib/gemma";
 import { findCompanyChatter, type CompanyChatter } from "@/lib/datasources/reddit";
 import { findPeople, emailPatterns, type PeopleIntel } from "@/lib/datasources/people";
 import { fetchRecentYCCompanies, type YCCompany } from "@/lib/datasources/yc";
-import { decideGates, guessDomain, normalizeYCBatch, ycBatchYear, type CompanyMeta } from "./gating";
+import { searchStartupsGallery, type StartupRef } from "@/lib/datasources/startupsgallery";
+import { decideGates, guessDomain, isGiant, normalizeYCBatch, ycBatchYear, type CompanyMeta } from "./gating";
 import type {
   FundingIntel,
   HiringSignal,
@@ -90,6 +91,19 @@ function signalCandidates(signals: HiringSignal[]): Candidate[] {
     }));
 }
 
+function galleryCandidates(refs: StartupRef[]): Candidate[] {
+  return refs.map((r) => ({
+    meta: {
+      name: r.name,
+      domain: guessDomain(r.name),
+      source: "gallery" as const,
+    },
+    one_liner: `${r.name} — tracked on startups.gallery.`,
+    url: r.url,
+    source_label: "STARTUPS.GALLERY",
+  }));
+}
+
 function ycCandidates(companies: YCCompany[]): Candidate[] {
   return companies.map((c) => {
     const normBatch = normalizeYCBatch(c.batch || "") || undefined;
@@ -130,6 +144,31 @@ function dedupeByName(cands: Candidate[]): Candidate[] {
   return [...seen.values()];
 }
 
+/**
+ * Cap YC slots at 2 and guarantee a non-YC pick if the pool has one. Order
+ * within each bucket is preserved from the caller.
+ */
+function diversifyPick<T extends { c: Candidate }>(items: T[], max: number): T[] {
+  const YC_CAP = 2;
+  const yc = items.filter((x) => x.c.meta.source === "yc");
+  const nonYc = items.filter((x) => x.c.meta.source !== "yc");
+  const out: T[] = [];
+  // Seed with up to 1 non-YC to break the YC-only default.
+  if (nonYc.length) out.push(nonYc.shift()!);
+  // Then interleave — prefer non-YC while respecting the YC cap.
+  while (out.length < max && (yc.length || nonYc.length)) {
+    if (nonYc.length) out.push(nonYc.shift()!);
+    if (out.length >= max) break;
+    const ycCount = out.filter((x) => x.c.meta.source === "yc").length;
+    if (yc.length && ycCount < YC_CAP) out.push(yc.shift()!);
+    if (!nonYc.length && (!yc.length || ycCount >= YC_CAP)) break;
+  }
+  // Top up with whatever's left (YC beyond the cap only if nothing else).
+  while (out.length < max && nonYc.length) out.push(nonYc.shift()!);
+  while (out.length < max && yc.length) out.push(yc.shift()!);
+  return out.slice(0, max);
+}
+
 // ── Main entry ────────────────────────────────────────────────────────
 
 export async function runDossierAgent(
@@ -142,29 +181,39 @@ export async function runDossierAgent(
     return [];
   }
 
-  // YC is slow-ish (4 parallel JSON fetches) — kick it off first so it overlaps.
+  // Kick off the two slow-ish external sources in parallel so they overlap.
   const ycP = bounded(
     fetchRecentYCCompanies(mission.keywords, mission.industry, 4, 18),
     8_000,
     [] as YCCompany[]
   );
+  const galleryP = bounded(
+    searchStartupsGallery([mission.industry, ...mission.keywords], 12),
+    7_000,
+    [] as StartupRef[]
+  );
 
-  const yc = await ycP;
+  const [yc, gallery] = await Promise.all([ycP, galleryP]);
 
   const pool = dedupeByName([
     ...fundingCandidates(funding),
     ...ycCandidates(yc),
+    ...galleryCandidates(gallery),
     ...signalCandidates(signals),
-  ]);
+  ])
+    // Hard filter giants before the full gate — faster + cleaner reasons.
+    .filter((c) => !isGiant(c.meta.name));
 
-  // Apply gate first — drops companies that fail the "young + lean + fresh money"
-  // test. Sort remaining by source-priority + recency.
-  const gated = pool
+  // Apply gate — drops companies that fail the "young + lean + fresh money" test.
+  const passed = pool
     .map((c) => ({ c, gate: decideGates(c.meta, mission.mission_type) }))
-    .filter((g) => g.gate.is_likely_hiring)
-    .slice(0, MAX_DOSSIERS);
+    .filter((g) => g.gate.is_likely_hiring);
 
-  if (!gated.length) return [];
+  if (!passed.length) return [];
+
+  // Diversity quota: at most 2 YC slots, aim for >=1 non-YC if any exists.
+  // Everything else fills by pool order.
+  const gated = diversifyPick(passed, MAX_DOSSIERS);
 
   const dossiers = await Promise.all(
     gated.map(({ c, gate }) => buildDossier(c, gate, mission, provider))

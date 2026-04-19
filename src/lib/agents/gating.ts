@@ -28,6 +28,38 @@ export type GateDecision = {
 const now = () => Date.now();
 const YEAR_MS = 365 * 86400 * 1000;
 
+// Megacorps and household-name scaleups — they already have a career page,
+// a recruiter team, and 50k LinkedIn followers. Surfacing them in the
+// "off-grid" dossier is noise. Match is case-insensitive, substring-safe on
+// whole-word boundaries.
+const GIANTS_BLOCKLIST: readonly string[] = [
+  // FAANG + big tech
+  "google", "alphabet", "meta", "facebook", "instagram", "whatsapp",
+  "apple", "amazon", "aws", "microsoft", "github", "linkedin", "netflix",
+  "nvidia", "intel", "ibm", "oracle", "salesforce", "sap", "adobe",
+  // Established OSS / framework giants (not startups anymore)
+  "laravel", "rails", "django", "react", "vue", "angular", "nodejs",
+  "wordpress", "automattic",
+  // Scaleups past the hiring-hungry window
+  "stripe", "shopify", "square", "block", "paypal", "coinbase", "databricks",
+  "snowflake", "palantir", "uber", "lyft", "airbnb", "doordash", "instacart",
+  "twilio", "zoom", "slack", "atlassian", "dropbox", "box", "asana",
+  "figma", "canva", "notion", "linear", "discord", "reddit", "spotify",
+  "tiktok", "bytedance", "twitter", "x corp", "anthropic", "openai",
+  "tesla", "spacex", "nike", "disney", "walmart", "target",
+];
+
+export function isGiant(name: string): boolean {
+  const n = (name || "").toLowerCase().trim();
+  if (!n) return false;
+  for (const g of GIANTS_BLOCKLIST) {
+    // Whole-word match: allow "OpenAI Inc" but not "OpenAIsomething"
+    const re = new RegExp(`(^|[^a-z0-9])${g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i");
+    if (re.test(n)) return true;
+  }
+  return false;
+}
+
 export function ageYears(meta: CompanyMeta): number | null {
   if (meta.founded_year) {
     return new Date().getFullYear() - meta.founded_year;
@@ -115,9 +147,12 @@ export function decideGates(meta: CompanyMeta, mission_type: MissionType): GateD
   const do_cold_email = do_email_pattern && do_people_lookup;
 
   // Likely-hiring classification — the crown jewel. Must be young, lean, and
-  // funded recently OR a recent YC batch.
+  // funded recently OR a recent YC batch. Megacorps are hard-rejected — they
+  // dominate search results but already have infinite applicants.
   let is_likely_hiring = false;
   const reasonsLH: string[] = [];
+  const giant = isGiant(meta.name);
+  if (giant) reasonsLH.push("giant-blocked");
   const youngEnough = age === null ? true : age <= 8;
   const leanEnough =
     meta.headcount_estimate === undefined || meta.headcount_estimate <= 100;
@@ -125,10 +160,14 @@ export function decideGates(meta: CompanyMeta, mission_type: MissionType): GateD
   const recentYC = meta.yc_batch
     ? isRecentYC(meta.yc_batch, 4)
     : false;
-  if (youngEnough && leanEnough && (recentFunding || recentYC)) {
+  // startups.gallery is a hand-curated index of early-stage companies —
+  // presence there is itself a young+hiring signal when we have no other data.
+  const curatedGallery = meta.source === "gallery" && !meta.funding_date && !meta.yc_batch;
+  if (!giant && youngEnough && leanEnough && (recentFunding || recentYC || curatedGallery)) {
     is_likely_hiring = true;
     if (recentFunding) reasonsLH.push("funded<=1yr");
     if (recentYC) reasonsLH.push(`yc:${meta.yc_batch}`);
+    if (curatedGallery) reasonsLH.push("gallery-curated");
   } else {
     if (!youngEnough) reasonsLH.push("too-old");
     if (!leanEnough) reasonsLH.push("too-big");
