@@ -103,11 +103,24 @@ export default function WarRoom() {
 
       const data: InvestigationPayload = await res.json();
       setPayload(data);
+      // Credit downstream contributions: if the dossier agent surfaced a card
+      // sourced from funding / YC / signals streams, mark the upstream agent as
+      // succeeded. An agent is only "NO MATCHES" when the whole pipeline came
+      // back empty of any intel the candidate can act on.
+      const dossiers = data.likely_hiring || [];
+      const fundingDossiers = dossiers.filter((d) => d.source === "funding").length;
+      const ycDossiers = dossiers.filter((d) => d.source === "yc").length;
+      const signalDossiers = dossiers.filter((d) => d.source === "gallery").length;
+      const anyDossier = dossiers.length > 0;
+      const foxhoundCount = data.funding.length + fundingDossiers + ycDossiers;
+      const wiretapCount = data.signals.length + signalDossiers;
+      const ghostnetCount = data.oss.length;
+      const profilerCount = data.profiler.top_targets.length + dossiers.length;
       setStatuses({
-        FOXHOUND: data.funding.length ? "intel_acquired" : "failed",
-        WIRETAP: data.signals.length ? "intel_acquired" : "failed",
-        GHOSTNET: data.oss.length ? "intel_acquired" : "failed",
-        PROFILER: data.profiler.top_targets.length ? "intel_acquired" : "failed",
+        FOXHOUND: foxhoundCount ? "intel_acquired" : "failed",
+        WIRETAP: wiretapCount || anyDossier ? "intel_acquired" : "failed",
+        GHOSTNET: ghostnetCount || anyDossier ? "intel_acquired" : "failed",
+        PROFILER: profilerCount ? "intel_acquired" : "failed",
       });
       setPhase("complete");
     } catch (e) {
@@ -123,15 +136,19 @@ export default function WarRoom() {
   }, [provider]);
 
   const findings = useMemo<Partial<Record<AgentCode, number>>>(
-    () =>
-      payload
-        ? {
-            FOXHOUND: payload.funding.length,
-            WIRETAP: payload.signals.length,
-            GHOSTNET: payload.oss.length,
-            PROFILER: payload.profiler.top_targets.length,
-          }
-        : {},
+    () => {
+      if (!payload) return {};
+      const dossiers = payload.likely_hiring || [];
+      const fundingDossiers = dossiers.filter((d) => d.source === "funding").length;
+      const ycDossiers = dossiers.filter((d) => d.source === "yc").length;
+      const signalDossiers = dossiers.filter((d) => d.source === "gallery").length;
+      return {
+        FOXHOUND: payload.funding.length + fundingDossiers + ycDossiers,
+        WIRETAP: payload.signals.length + signalDossiers,
+        GHOSTNET: payload.oss.length,
+        PROFILER: payload.profiler.top_targets.length + dossiers.length,
+      };
+    },
     [payload]
   );
 
@@ -140,7 +157,7 @@ export default function WarRoom() {
       <Header caseNumber={payload?.case_number} status={phase} />
 
       <main className="relative z-10 mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {phase === "idle" && <IdleHero />}
+        {phase === "idle" && <IdleHero onPick={handleSubmit} />}
 
         <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1.35fr]">
           <div className="space-y-6">
@@ -207,7 +224,26 @@ export default function WarRoom() {
   );
 }
 
-function IdleHero() {
+const SUGGESTED_MISSIONS: { label: string; query: string }[] = [
+  {
+    label: "AI INFRA · FOUNDING ENGINEER",
+    query: "AI infrastructure startups hiring founding engineers in SF",
+  },
+  {
+    label: "YC W26 · DEV TOOLS",
+    query: "YC W26 developer tools startups hiring backend engineers",
+  },
+  {
+    label: "SEED · FINTECH · SERIES A",
+    query: "seed and Series A fintech startups hiring founding engineers",
+  },
+  {
+    label: "ML INFRA · OSS HIRING",
+    query: "ML infrastructure startups with active open source projects hiring",
+  },
+];
+
+function IdleHero({ onPick }: { onPick: (q: string) => void }) {
   return (
     <section className="mb-8">
       <div className="inline-flex items-center gap-2 rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber)]/10 px-3 py-1 text-[10px] tracking-[0.3em] text-[var(--accent-amber)]">
@@ -231,6 +267,26 @@ function IdleHero() {
           <path d="M12 2 3 7v6c0 5 4 9 9 9s9-4 9-9V7l-9-5zm-1 14-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6z" />
         </svg>
         <span>EVERY LEAD · OFF-GRID · NOT ON LINKEDIN</span>
+      </div>
+
+      <div className="mt-6">
+        <div className="mb-2 flex items-center gap-3 text-[10px] tracking-[0.3em] text-[var(--text-muted)]">
+          <span>SUGGESTED MISSIONS · ONE-CLICK DEPLOY</span>
+          <span className="h-px flex-1 bg-[var(--border-subtle)]" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SUGGESTED_MISSIONS.map((m) => (
+            <button
+              key={m.label}
+              type="button"
+              onClick={() => onPick(m.query)}
+              className="group rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] px-3 py-1.5 text-[10px] tracking-[0.22em] text-[var(--text-secondary)] transition hover:border-[var(--accent-amber)] hover:bg-[var(--accent-amber)]/10 hover:text-[var(--accent-amber)]"
+              title={m.query}
+            >
+              <span className="typewriter">{m.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   );

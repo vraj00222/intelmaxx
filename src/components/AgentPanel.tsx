@@ -70,7 +70,7 @@ function statusLabel(s: AgentStatus): string {
     deployed: "DEPLOYED",
     investigating: "INVESTIGATING",
     intel_acquired: "INTEL ACQUIRED",
-    failed: "SIGNAL LOST",
+    failed: "NO MATCHES",
   }[s];
 }
 
@@ -149,7 +149,9 @@ export default function AgentPanel({ statuses, findings = {} }: Props) {
                 <span style={{ color }}>{statusLabel(s)}</span>
                 <span className="text-[var(--text-muted)]">
                   {s === "intel_acquired"
-                    ? `${findings[a.code] ?? 0} INTEL`
+                    ? (findings[a.code] ?? 0) > 0
+                      ? `${findings[a.code]} INTEL`
+                      : "CROSS-FED"
                     : s === "investigating"
                     ? "SCANNING..."
                     : s === "deployed"
