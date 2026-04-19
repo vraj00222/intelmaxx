@@ -8,10 +8,12 @@ import EvidenceBoard from "./EvidenceBoard";
 import VoiceBriefing from "./VoiceBriefing";
 import LoadingSequence from "./LoadingSequence";
 import IntelLoading from "./IntelLoading";
+import CaseFileDrawer from "./CaseFileDrawer";
 import ProviderToggle, { type Provider } from "./ProviderToggle";
 import type {
   AgentCode,
   AgentStatus,
+  CaseFilePayload,
   InvestigationPayload,
 } from "@/lib/agents/types";
 
@@ -34,6 +36,44 @@ export default function WarRoom() {
   const [lastQuery, setLastQuery] = useState<string>("");
   const [provider, setProvider] = useState<Provider>("novita");
 
+  // Case-file drawer state — independent of the main mission pipeline.
+  const [caseFileOpen, setCaseFileOpen] = useState(false);
+  const [caseFileCompany, setCaseFileCompany] = useState<string | null>(null);
+  const [caseFilePayload, setCaseFilePayload] = useState<CaseFilePayload | null>(null);
+  const [caseFileLoading, setCaseFileLoading] = useState(false);
+  const [caseFileError, setCaseFileError] = useState<string | null>(null);
+
+  const openCaseFile = useCallback(async (company: string, domain?: string) => {
+    const name = company.trim();
+    if (!name) return;
+    setCaseFileOpen(true);
+    setCaseFileCompany(name);
+    setCaseFilePayload(null);
+    setCaseFileError(null);
+    setCaseFileLoading(true);
+    try {
+      const res = await fetch("/api/casefile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company: name, domain }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || `Case file failed: ${res.status}`);
+      }
+      const data: CaseFilePayload = await res.json();
+      setCaseFilePayload(data);
+    } catch (e) {
+      setCaseFileError(e instanceof Error ? e.message : "Case file failed");
+    } finally {
+      setCaseFileLoading(false);
+    }
+  }, []);
+
+  const closeCaseFile = useCallback(() => {
+    setCaseFileOpen(false);
+  }, []);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem("gemma_provider");
@@ -49,6 +89,14 @@ export default function WarRoom() {
   }, []);
 
   const handleSubmit = useCallback(async (query: string) => {
+    // Slash-command shortcut: "/case Acme Corp" opens a case file instead of
+    // running the full agent pipeline. Handy as a judge-mode power move.
+    const caseMatch = /^\/case(?:file)?\s+(.+)$/i.exec(query.trim());
+    if (caseMatch) {
+      openCaseFile(caseMatch[1].trim());
+      return;
+    }
+
     setPhase("deploying");
     setError(null);
     setPayload(null);
@@ -209,7 +257,7 @@ export default function WarRoom() {
             <AgentPanel statuses={statuses} findings={findings} />
 
             {payload ? (
-              <EvidenceBoard payload={payload} />
+              <EvidenceBoard payload={payload} onOpenCaseFile={openCaseFile} />
             ) : phase === "deploying" ? (
               <IntelLoading />
             ) : null}
@@ -227,6 +275,15 @@ export default function WarRoom() {
           </a>
         </footer>
       </main>
+
+      <CaseFileDrawer
+        open={caseFileOpen}
+        company={caseFileCompany}
+        payload={caseFilePayload}
+        loading={caseFileLoading}
+        error={caseFileError}
+        onClose={closeCaseFile}
+      />
     </div>
   );
 }
@@ -269,11 +326,16 @@ function IdleHero({ onPick }: { onPick: (q: string) => void }) {
         — deploy in parallel and return with funding intel, hiring signals, open-source backdoors, and a ranked dossier.
         Voice briefing narrated in noir detective style.
       </p>
-      <div className="mt-4 inline-flex items-center gap-3 border-2 border-dashed border-[var(--stamp-red)] bg-[var(--stamp-red)]/10 px-3 py-1.5 text-[11px] tracking-[0.25em] text-[var(--stamp-red)]">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2 3 7v6c0 5 4 9 9 9s9-4 9-9V7l-9-5zm-1 14-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6z" />
-        </svg>
-        <span>EVERY LEAD · OFF-GRID · NOT ON LINKEDIN</span>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="inline-flex items-center gap-3 border-2 border-dashed border-[var(--stamp-red)] bg-[var(--stamp-red)]/10 px-3 py-1.5 text-[11px] tracking-[0.25em] text-[var(--stamp-red)]">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2 3 7v6c0 5 4 9 9 9s9-4 9-9V7l-9-5zm-1 14-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6z" />
+          </svg>
+          <span>EVERY LEAD · OFF-GRID · NOT ON LINKEDIN</span>
+        </div>
+        <code className="rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] px-2 py-1 font-mono text-[10px] tracking-[0.15em] text-[var(--text-secondary)]">
+          TIP · type <span className="text-[var(--accent-amber)]">/case &lt;company&gt;</span> for a single-target dossier
+        </code>
       </div>
 
       <div className="mt-6">

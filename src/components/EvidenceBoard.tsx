@@ -7,9 +7,10 @@ import LikelyHiringBoard from "./LikelyHiringBoard";
 
 type Props = {
   payload: InvestigationPayload | null;
+  onOpenCaseFile?: (company: string, domain?: string) => void;
 };
 
-export default function EvidenceBoard({ payload }: Props) {
+export default function EvidenceBoard({ payload, onOpenCaseFile }: Props) {
   if (!payload) return null;
   const { funding, signals, oss, profiler, likely_hiring } = payload;
 
@@ -81,7 +82,7 @@ export default function EvidenceBoard({ payload }: Props) {
 
   return (
     <section>
-      <LikelyHiringBoard dossiers={likely_hiring || []} />
+      <LikelyHiringBoard dossiers={likely_hiring || []} onOpenCaseFile={onOpenCaseFile} />
       {moat.length ? (
         <div className="mb-8">
           <div className="mb-3 flex items-center gap-3 text-[10px] tracking-[0.3em] text-[var(--stamp-red)]">

@@ -49,8 +49,28 @@ function fallbackMission(raw: string): MissionBrief {
   };
 }
 
+/**
+ * A one-word prompt like "AI" or "frontend" barely gives Gemma anything to
+ * chew on — the keywords will be empty and the agents starve. Expand short
+ * inputs with a default hiring frame so even a lazy prompt produces real
+ * dossiers. Kept conservative: we only rewrite when there's clearly nothing
+ * else in the query (≤ 3 salvageable tokens, no verb/clause).
+ */
+function enrichVaguePrompt(raw: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return trimmed;
+  // Already a full sentence — leave it alone.
+  if (trimmed.split(/\s+/).length >= 5) return trimmed;
+  const tokens = heuristicKeywords(trimmed);
+  if (!tokens.length) return trimmed;
+  // Short query, no signal verbs. Frame it as a hiring mission.
+  const body = tokens.join(" ");
+  return `${body} startups hiring founding engineers`;
+}
+
 /** Parse raw user input into a structured mission brief via Gemma. */
 export async function parseMission(raw: string, provider?: Provider): Promise<MissionBrief> {
+  const enriched = enrichVaguePrompt(raw);
   const system = `You are the ORCHESTRATOR, the intake analyst for IntelMaxxing.
 Convert a user's free-form mission into structured search parameters.
 
@@ -87,7 +107,7 @@ No preamble, no markdown fences.`;
     result = await gemmaJSON(
       [
         { role: "system", content: system },
-        { role: "user", content: raw },
+        { role: "user", content: enriched },
       ],
       { provider, max_tokens: 400, temperature: 0.15 }
     );

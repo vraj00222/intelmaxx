@@ -58,6 +58,57 @@ async function fetchBatch(code: string): Promise<YCCompany[]> {
  * Returns at most `limit` companies, sorted by signal strength (team size,
  * industry match, batch recency).
  */
+// Module-level cache for the full YC roster (5k+ companies). Refetched every
+// 6h; TTL deliberately long because the case-file lookup runs on every /case
+// command and we don't want to hit GitHub Pages hard.
+let _allCache: { at: number; data: YCCompany[] } | null = null;
+const ALL_TTL_MS = 6 * 60 * 60 * 1000;
+
+async function fetchAllYC(): Promise<YCCompany[]> {
+  if (_allCache && Date.now() - _allCache.at < ALL_TTL_MS) return _allCache.data;
+  try {
+    const res = await fetch("https://yc-oss.github.io/api/companies/all.json", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return _allCache?.data || [];
+    const arr = (await res.json()) as YCCompany[];
+    if (Array.isArray(arr) && arr.length) {
+      _allCache = { at: Date.now(), data: arr };
+      return arr;
+    }
+  } catch {
+    /* fall through */
+  }
+  return _allCache?.data || [];
+}
+
+/**
+ * Exact-ish name lookup across EVERY YC batch (not just recent ones). Used by
+ * the case-file orchestrator where the user names a specific company — we need
+ * to match S09 Stripe as reliably as W26 newcomers.
+ */
+export async function findYCByName(name: string): Promise<YCCompany | null> {
+  const q = name.trim().toLowerCase();
+  if (!q) return null;
+  const all = await fetchAllYC();
+  if (!all.length) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const qN = norm(q);
+  // 1) Exact case-insensitive match on name.
+  const exact = all.find((c) => c.name?.toLowerCase().trim() === q);
+  if (exact) return exact;
+  // 2) Normalized match (handles "InsForge" vs "insforge", "Y Combinator" vs "ycombinator").
+  const normExact = all.find((c) => c.name && norm(c.name) === qN);
+  if (normExact) return normExact;
+  // 3) Prefix match — prefers shorter names so "Cursor" beats "Cursor AI Labs".
+  const prefix = all
+    .filter((c) => c.name && norm(c.name).startsWith(qN))
+    .sort((a, b) => (a.name?.length || 999) - (b.name?.length || 999));
+  if (prefix[0]) return prefix[0];
+  return null;
+}
+
 export async function fetchRecentYCCompanies(
   keywords: string[],
   industry: string,

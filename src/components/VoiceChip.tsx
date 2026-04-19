@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Variant = "moat" | "warning";
+type Variant = "moat" | "warning" | "rehearse";
 
 type Props = {
   text: string;
@@ -88,6 +88,13 @@ export default function VoiceChip({ text, label, variant = "moat", sublabel }: P
           fill: "bg-[var(--accent-red)]/15",
           text: "text-[var(--accent-red)]",
           icon: "⚠",
+        }
+      : variant === "rehearse"
+      ? {
+          border: "border-[var(--accent-green)]",
+          fill: "bg-[var(--accent-green)]/15",
+          text: "text-[var(--accent-green)]",
+          icon: "▶",
         }
       : {
           border: "border-[var(--accent-amber)]",

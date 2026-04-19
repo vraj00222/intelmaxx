@@ -123,6 +123,87 @@ export type LikelyHiringDossier = {
   gate_reasons: string[];
 };
 
+// ─── CASE FILE — single-company deep dive ───────────────────────────────
+
+export type CaseFileEmployee = {
+  login: string;              // GitHub login
+  name: string | null;
+  avatar_url: string;
+  github_url: string;
+  bio: string | null;
+  blog: string | null;        // personal site/blog, if any
+  location: string | null;
+  x_url: string | null;       // derived from GitHub twitter_username
+  linkedin_search_url: string | null; // google-query URL for LinkedIn lookup
+  contributions: number;
+  seen_in_repos: string[];
+  email_patterns: string[];   // pattern-guessed, unverified
+  role_hint: "founder" | "staff" | "contributor" | null;
+};
+
+export type CaseFileRepo = {
+  name: string;
+  full_name: string;
+  description: string | null;
+  stars: number;
+  language: string | null;
+  url: string;
+  pushed_at: string;
+};
+
+export type CaseFileSummary = {
+  company_name: string;
+  domain: string | null;
+  one_liner: string | null;
+  location: string | null;
+  yc_batch: string | null;
+  team_size: number | null;
+  tags: string[];
+  homepage_url: string | null;
+  github_org: string | null;
+  github_url: string | null;
+  twitter_url: string | null;
+  gallery_url: string | null;
+  yc_status: string | null;
+};
+
+export type CaseFilePayload = {
+  case_number: string;
+  summary: CaseFileSummary;
+  founders: PersonDossier[];        // CEO/CTO slot from people.ts
+  employees: CaseFileEmployee[];    // enriched GitHub contributors
+  repos: CaseFileRepo[];
+  funding_mentions: Array<{
+    headline: string;
+    url: string;
+    source: "hn" | "web";
+    created_at?: string;
+    points?: number;
+  }>;
+  hn_launches: Array<{
+    headline: string;
+    url: string;
+    points: number;
+    num_comments: number;
+    created_at: string;
+  }>;
+  reddit_chatter: {
+    positive: RedditChatterItem[];
+    red_flags: RedditChatterItem[];
+    hiring_buzz: RedditChatterItem[];
+  };
+  briefing_text: string;            // narratable summary for ElevenLabs
+  sources: {
+    github: boolean;
+    yc: boolean;
+    gallery: boolean;
+    hn: boolean;
+    reddit: boolean;
+    people: boolean;
+  };
+  elapsed_ms: number;
+};
+
 export type AgentStatus = "standby" | "deployed" | "investigating" | "intel_acquired" | "failed";
 
 export type AgentCode = "FOXHOUND" | "WIRETAP" | "GHOSTNET" | "PROFILER";

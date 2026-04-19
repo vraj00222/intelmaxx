@@ -2,12 +2,33 @@
 
 import { useState } from "react";
 import type { LikelyHiringDossier, PersonDossier } from "@/lib/agents/types";
+import VoiceChip from "./VoiceChip";
+
+/** Wrap a cold email in a short framing line so ElevenLabs narrates it like a
+ *  rehearsal, not a generic TTS readout. Keeps it in-universe. */
+function rehearsalScript(d: LikelyHiringDossier): string {
+  const target = d.ceo?.name || d.cto?.name || "the founder";
+  const intro = `Rehearsal transmission. You're pitching ${target} at ${d.company_name}. Subject line: ${d.cold_email_subject}. Message begins.`;
+  return `${intro} ${d.cold_email_body}. End rehearsal.`;
+}
+
+/** Narrated red-flag warning — Gotham-style "heads-up before you send the email"
+ *  moment. Only used when a dossier actually has red-flag chatter. */
+function redFlagScript(d: LikelyHiringDossier): string {
+  const head = `Advisory on ${d.company_name}. Field intercepts flag potential concerns.`;
+  const lines = d.reddit_red_flags
+    .slice(0, 3)
+    .map((r) => r.headline)
+    .join(". ");
+  return `${head} ${lines}. Verify independently before engaging.`;
+}
 
 type Props = {
   dossiers: LikelyHiringDossier[];
+  onOpenCaseFile?: (company: string, domain?: string) => void;
 };
 
-export default function LikelyHiringBoard({ dossiers }: Props) {
+export default function LikelyHiringBoard({ dossiers, onOpenCaseFile }: Props) {
   if (!dossiers.length) return null;
 
   return (
@@ -32,7 +53,11 @@ export default function LikelyHiringBoard({ dossiers }: Props) {
         </p>
         <div className="relative z-10 grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
           {dossiers.map((d, i) => (
-            <DossierCard key={`${d.company_name}-${i}`} d={d} />
+            <DossierCard
+              key={`${d.company_name}-${i}`}
+              d={d}
+              onOpenCaseFile={onOpenCaseFile}
+            />
           ))}
         </div>
       </div>
@@ -40,7 +65,13 @@ export default function LikelyHiringBoard({ dossiers }: Props) {
   );
 }
 
-function DossierCard({ d }: { d: LikelyHiringDossier }) {
+function DossierCard({
+  d,
+  onOpenCaseFile,
+}: {
+  d: LikelyHiringDossier;
+  onOpenCaseFile?: (company: string, domain?: string) => void;
+}) {
   const [tab, setTab] = useState<"hiring" | "buzz" | "flags">(
     d.reddit_hiring_buzz.length
       ? "hiring"
@@ -79,16 +110,28 @@ function DossierCard({ d }: { d: LikelyHiringDossier }) {
             ) : null}
           </div>
         </div>
-        {d.url ? (
-          <a
-            href={d.url}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 font-mono text-[9.5px] tracking-[0.2em] text-[var(--text-muted)] hover:text-[var(--accent-amber)]"
-          >
-            SITE ↗
-          </a>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onOpenCaseFile ? (
+            <button
+              type="button"
+              onClick={() => onOpenCaseFile(d.company_name, d.domain || undefined)}
+              className="rounded-sm border border-[var(--stamp-red)] bg-[var(--stamp-red)]/10 px-1.5 py-0.5 font-mono text-[9.5px] tracking-[0.2em] text-[var(--stamp-red)] hover:bg-[var(--stamp-red)]/25"
+              title="Open full case file"
+            >
+              CASE FILE
+            </button>
+          ) : null}
+          {d.url ? (
+            <a
+              href={d.url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-[9.5px] tracking-[0.2em] text-[var(--text-muted)] hover:text-[var(--accent-amber)]"
+            >
+              SITE ↗
+            </a>
+          ) : null}
+        </div>
       </div>
 
       <p className="text-[12.5px] leading-snug text-[var(--text-secondary)]">
@@ -160,6 +203,16 @@ function DossierCard({ d }: { d: LikelyHiringDossier }) {
               }
             />
           </div>
+          {tab === "flags" && d.reddit_red_flags.length ? (
+            <div className="border-t border-[var(--border-subtle)] p-2">
+              <VoiceChip
+                text={redFlagScript(d)}
+                label="RED FLAG BRIEF"
+                sublabel={d.company_name}
+                variant="warning"
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -176,7 +229,15 @@ function DossierCard({ d }: { d: LikelyHiringDossier }) {
           <div className="border-t border-[var(--accent-amber)]/30 p-3">
             <CopyField label="SUBJECT" value={d.cold_email_subject} mono />
             <CopyField label="BODY" value={d.cold_email_body} area />
-            <MailtoButton dossier={d} />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <MailtoButton dossier={d} />
+              <VoiceChip
+                text={rehearsalScript(d)}
+                label="REHEARSE PITCH"
+                sublabel={d.company_name}
+                variant="rehearse"
+              />
+            </div>
           </div>
         ) : null}
       </div>
