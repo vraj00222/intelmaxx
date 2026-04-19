@@ -17,7 +17,12 @@ You describe a mission ("AI infra startup, seed/series A, remote, founding engin
 | **GHOSTNET** | Open-source backdoors — active repos with good-first-issues | GitHub search + issues + CONTRIBUTING.md |
 | **PROFILER** | Cross-references, scores, writes the briefing, flags red flags | Reddit (culture / red-flag intel) |
 
-The output is a detective evidence board with case files, red-string connections, a dedicated **MOAT · LIKELY TO HIRE** section for fresh-money companies, and a 10–15 sec noir voice hook + full debrief via ElevenLabs.
+The output is a detective evidence board with case files, red-string connections, a dedicated **MOAT · LIKELY TO HIRE** section for fresh-money companies, and four layers of ElevenLabs voice:
+
+- **10–15 sec spy hook** — punchy mission-level sell, one Gen-Z phrase, noir delivery
+- **Full 3-paragraph debrief** — case-log style, agent-by-agent narration
+- **Per-company MOAT briefing** — ▶ play button on each likely-to-hire card, 15–20 sec pitch tailored to *that* company (funding detail → role gap → concrete action)
+- **⚠ VOICE WARNING** — on every top target where Reddit surfaced ghost-interview / layoffs / rescinded-offer posts
 
 ---
 
@@ -102,15 +107,29 @@ Each agent in `src/lib/agents/` is a single function that:
 3. Hands off to Gemma 4 with a tight system prompt → structured JSON.
 4. Post-enriches (e.g., `funding.ts` tags `likely_to_hire` + startups.gallery matches).
 
-`matcher.ts` (PROFILER) additionally runs `findCultureRedFlags(company)` in parallel on every top target and attaches the results to the dossier.
+`matcher.ts` (PROFILER) does three extra things beyond ranking:
+1. Runs `findCultureRedFlags(company)` in parallel on every top target and attaches Reddit evidence to the dossier.
+2. Emits `moat_briefings[]` — one tailored voice-ready pitch per likely-to-hire funder (prompted specifically for that company; falls back to a deterministic template if the model skips any entry).
+3. Emits the short `intel_briefing_voice` hook + the long `intel_briefing_text` debrief.
+
+### Voice layer (ElevenLabs)
+
+`src/lib/elevenlabs.ts` wraps the ElevenLabs SDK with a noir-tuned voice preset (voice id `JBFqnCBsd6RMkjVDRZzb` — "George"; stability 0.38, similarity 0.85, style 0.78 for thicker delivery). `/api/briefing` takes `{ text }` and streams back `audio/mpeg`.
+
+`src/components/VoiceChip.tsx` — reusable micro-player (▶ idle → ⟳ loading → ❚❚ playing, with inline error reporting). Used in two places:
+- Under each MOAT card for the company-specific dossier
+- Inside the red-flag panel for the warning playback
+
+`src/components/VoiceBriefing.tsx` — the main briefing player with waveform + transcript, toggling between the spy hook and full debrief.
 
 ### UI
 
 - `EvidenceBoard.tsx` — three stacked sections:
-  - **MOAT · LIKELY TO HIRE** (dashed red border, dedicated card grid — this is the edge)
+  - **MOAT · LIKELY TO HIRE** (dashed red border, dedicated card grid, ▶ **MOAT BRIEFING** under each card — this is the edge)
   - **EVIDENCE BOARD** (corkboard with decorative red strings + corner push-pins)
-  - **PROFILER DOSSIER · TOP TARGETS** (rank + score + action items + **RED FLAGS panel** when detected)
+  - **PROFILER DOSSIER · TOP TARGETS** (rank + score + action items + **RED FLAGS panel** with inline **⚠ VOICE WARNING** playback)
 - `VoiceBriefing.tsx` — toggles between the 15-second spy hook and the full 3-paragraph noir debrief
+- `VoiceChip.tsx` — compact play button for the per-company MOAT briefings and red-flag warnings
 - `ProviderToggle.tsx` — pill toggle showing `NOVITA (google/gemma-4-31b-it)` / `OLLAMA (gemma4:e2b)`
 
 ---
@@ -170,13 +189,19 @@ POST /api/investigate { query, provider? }
          ├─► Cross-references the three reports
          ├─► Writes intel_briefing_text (3-paragraph noir debrief)
          ├─► Writes intel_briefing_voice (10–15 sec spy hook, Gen-Z tinged)
+         ├─► Writes moat_briefings[] (15-20 sec per likely-to-hire company)
          └─► Reddit red-flag enrichment on every top target (parallel)
    │
    ▼
-returns InvestigationPayload → WarRoom → EvidenceBoard renders
+returns InvestigationPayload → WarRoom → EvidenceBoard
+                                            ├─► MOAT cards render with ▶ MOAT BRIEFING
+                                            ├─► TOP TARGETS render with ⚠ VOICE WARNING on red flags
+                                            └─► VoiceBriefing renders the hook + full debrief
+
+POST /api/briefing { text } → ElevenLabs TTS → audio/mpeg (streamed to the chip/player)
 ```
 
-Typical turnaround: 18–30 seconds end-to-end with Novita.
+Typical turnaround: 18–30 s end-to-end with Novita for the investigation; each voice chip fetches TTS lazily on first ▶ (≈1–3 s).
 
 ---
 
