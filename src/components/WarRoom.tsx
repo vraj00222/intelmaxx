@@ -7,6 +7,7 @@ import AgentPanel from "./AgentPanel";
 import EvidenceBoard from "./EvidenceBoard";
 import VoiceBriefing from "./VoiceBriefing";
 import LoadingSequence from "./LoadingSequence";
+import IntelLoading from "./IntelLoading";
 import ProviderToggle, { type Provider } from "./ProviderToggle";
 import type {
   AgentCode,
@@ -199,12 +200,7 @@ export default function WarRoom() {
             {payload ? (
               <EvidenceBoard payload={payload} />
             ) : phase === "deploying" ? (
-              <div className="corkboard rounded-sm border border-black/40 p-10 text-center opacity-80">
-                <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[var(--pin-gold)] border-t-transparent" />
-                <p className="typewriter text-sm text-[var(--text-primary)]/90">
-                  Pinning evidence to the board...
-                </p>
-              </div>
+              <IntelLoading />
             ) : null}
           </div>
         </div>

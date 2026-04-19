@@ -425,3 +425,9 @@ a {
   right: 4px;
   border-width: 0 1px 1px 0;
 }
+
+/* Intel Loading — ticker sweep under the status line */
+@keyframes intel-ticker-sweep {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
