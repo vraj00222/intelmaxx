@@ -3,12 +3,28 @@ import { parseMission, newCaseNumber } from "@/lib/agents/orchestrator";
 import { runFoxhound } from "@/lib/agents/funding";
 import { runWiretap } from "@/lib/agents/signals";
 import { runGhostnet } from "@/lib/agents/opensource";
-import { runProfiler } from "@/lib/agents/matcher";
+import { runProfiler, buildProfilerFallback } from "@/lib/agents/matcher";
 import type { InvestigationPayload } from "@/lib/agents/types";
 import type { Provider } from "@/lib/gemma";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const ROUTE_DEADLINE_MS = 50_000;
+
+/** Race a promise against a deadline; on miss, resolve with `fallback` instead of hanging. */
+function withDeadline<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => {
+      console.warn(`[investigate] ${label} hit deadline (${ms}ms) — falling back`);
+      resolve(fallback);
+    }, ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); console.warn(`[investigate] ${label} error`, e); resolve(fallback); }
+    );
+  });
+}
 
 export async function POST(req: NextRequest) {
   const started = Date.now();
@@ -21,22 +37,62 @@ export async function POST(req: NextRequest) {
     const provider: Provider | undefined =
       body.provider === "ollama" || body.provider === "novita" ? body.provider : undefined;
 
-    // 1. Parse mission via Gemma
+    // 1. Parse mission via Gemma (classifies mission_type: hiring / oss_contrib / research / general)
+    const t0 = Date.now();
     const mission = await parseMission(query, provider);
+    console.log(`[investigate] parseMission took ${Date.now() - t0}ms`, {
+      mission_type: mission.mission_type,
+      industry: mission.industry,
+      keywords: mission.keywords,
+    });
 
-    // 2. Launch field agents in parallel
-    const [fundingR, signalsR, ossR] = await Promise.allSettled([
-      runFoxhound(mission, provider),
-      runWiretap(mission, provider),
-      runGhostnet(mission, provider),
+    // 2. Conditional dispatch by mission_type — skip irrelevant agents to save
+    //    latency & tokens. OSS / research queries don't need funding or hiring intel.
+    const type = mission.mission_type;
+    const wantFunding = type === "hiring" || type === "general";
+    const wantSignals = type === "hiring" || type === "general";
+    const wantOSS = true; // GHOSTNET is useful for every mission type
+
+    // Agent-phase deadline: whatever's done by then makes it into PROFILER; the rest
+    // is treated as empty. PROFILER then has the remaining budget.
+    const AGENT_DEADLINE = 28_000;
+    const t1 = Date.now();
+    const [funding, signals, oss] = await Promise.all([
+      withDeadline(
+        wantFunding ? runFoxhound(mission, provider) : Promise.resolve([]),
+        AGENT_DEADLINE,
+        [],
+        "FOXHOUND"
+      ),
+      withDeadline(
+        wantSignals ? runWiretap(mission, provider) : Promise.resolve([]),
+        AGENT_DEADLINE,
+        [],
+        "WIRETAP"
+      ),
+      withDeadline(
+        wantOSS ? runGhostnet(mission, provider) : Promise.resolve([]),
+        AGENT_DEADLINE,
+        [],
+        "GHOSTNET"
+      ),
     ]);
+    console.log(`[investigate] agents took ${Date.now() - t1}ms`, {
+      wantFunding, wantSignals, wantOSS,
+      funding: funding.length, signals: signals.length, oss: oss.length,
+    });
 
-    const funding = fundingR.status === "fulfilled" ? fundingR.value : [];
-    const signals = signalsR.status === "fulfilled" ? signalsR.value : [];
-    const oss = ossR.status === "fulfilled" ? ossR.value : [];
-
-    // 3. Compile via PROFILER
-    const profiler = await runProfiler(mission, funding, signals, oss, provider);
+    // 3. PROFILER — internally splits into 3 parallel Gemma calls + overlaps
+    //    Reddit red-flag enrichment. See matcher.ts.
+    const remaining = Math.max(5_000, ROUTE_DEADLINE_MS - (Date.now() - started));
+    const t2 = Date.now();
+    const profiler = await withDeadline(
+      runProfiler(mission, funding, signals, oss, provider),
+      remaining,
+      buildProfilerFallback(mission, funding, signals, oss),
+      "PROFILER"
+    );
+    console.log(`[investigate] profiler took ${Date.now() - t2}ms`);
 
     const payload: InvestigationPayload = {
       mission,

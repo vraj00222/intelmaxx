@@ -1,3 +1,5 @@
+export type MissionType = "hiring" | "oss_contrib" | "research" | "general";
+
 export type MissionBrief = {
   raw: string;
   industry: string;
@@ -5,6 +7,7 @@ export type MissionBrief = {
   role_type: string;
   location: string;
   keywords: string[];
+  mission_type: MissionType;
 };
 
 export type FundingIntel = {

@@ -67,11 +67,15 @@ export async function gemmaComplete(
     : novitaComplete(messages, opts);
 }
 
+// Per-call hard ceiling. If Novita (or Ollama) doesn't respond in this window, we
+// abort and either retry once or return a degraded fallback — never let a call
+// hang indefinitely.
+const GEMMA_TIMEOUT_MS = 25_000;
+
 async function ollamaComplete(
   messages: GemmaMessage[],
   opts: GemmaOptions
 ): Promise<string> {
-  // Ollama's OpenAI-compatible chat endpoint at /v1/chat/completions
   const res = await fetch(`${OLLAMA_BASE}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,6 +86,7 @@ async function ollamaComplete(
       max_tokens: opts.max_tokens ?? 1200,
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(GEMMA_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -106,25 +111,36 @@ async function novitaComplete(
     max_tokens: opts.max_tokens ?? 1200,
   };
 
-  const res = await fetch(`${NOVITA_BASE}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getNovitaKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gemma request failed (${res.status}): ${text.slice(0, 300)}`);
+  // Try once, retry once on timeout/abort. Any other error bubbles up.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(`${NOVITA_BASE}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getNovitaKey()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: AbortSignal.timeout(GEMMA_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Gemma request failed (${res.status}): ${text.slice(0, 300)}`);
+      }
+      const data = await res.json();
+      const content: string | undefined = data?.choices?.[0]?.message?.content;
+      if (!content) throw new Error("Gemma returned empty content");
+      return content;
+    } catch (e) {
+      const isTimeout =
+        e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      if (!isTimeout || attempt === 2) throw e;
+      // fall through to retry once on timeout
+      console.warn(`[gemma] timeout on attempt ${attempt}, retrying once...`);
+    }
   }
-
-  const data = await res.json();
-  const content: string | undefined = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Gemma returned empty content");
-  return content;
+  throw new Error("Gemma request failed after retry");
 }
 
 /**
@@ -135,23 +151,11 @@ export async function gemmaJSON<T = unknown>(
   messages: GemmaMessage[],
   opts: GemmaOptions = {}
 ): Promise<T> {
-  let raw = await gemmaComplete(messages, { temperature: 0.25, ...opts });
-  try {
-    return parseJSONLoose<T>(raw);
-  } catch {
-    // Retry once with stricter instruction
-    const retry: GemmaMessage[] = [
-      ...messages,
-      { role: "assistant", content: raw },
-      {
-        role: "user",
-        content:
-          "Your previous response was not valid JSON. Respond again with ONLY the JSON. No markdown fences, no preamble, no commentary.",
-      },
-    ];
-    raw = await gemmaComplete(retry, { temperature: 0.15, ...opts });
-    return parseJSONLoose<T>(raw);
-  }
+  // novitaComplete already handles one timeout-retry internally. If parsing fails
+  // here we throw — callers must have a fallback so we don't stack retries on top
+  // of retries and blow past the route deadline.
+  const raw = await gemmaComplete(messages, { temperature: 0.25, ...opts });
+  return parseJSONLoose<T>(raw);
 }
 
 function parseJSONLoose<T>(text: string): T {
