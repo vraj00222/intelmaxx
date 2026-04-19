@@ -33,8 +33,8 @@ function classifyRaw(raw: string): MissionType {
   return "general";
 }
 
-/** Safe fallback MissionBrief when parseMission's Gemma call fails. */
-function fallbackMission(raw: string): MissionBrief {
+/** Safe fallback MissionBrief when parseMission's Gemma call fails or times out. */
+export function fallbackMission(raw: string): MissionBrief {
   const kws = heuristicKeywords(raw);
   // Guess a coarse industry from the first keyword if we have one.
   const industry = kws[0] || "any";

@@ -534,18 +534,18 @@ a {
 }
 
 .casefile-folder.cf-open .casefile-stamp {
-  animation: casefile-stamp-press 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 180ms both;
+  animation: casefile-stamp-press 300ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both;
 }
 
 .casefile-folder.cf-open .casefile-cover {
-  animation: casefile-cover-lift 900ms cubic-bezier(0.55, 0.05, 0.2, 1) 560ms both;
+  animation: casefile-cover-lift 680ms cubic-bezier(0.55, 0.05, 0.2, 1) 360ms both;
 }
 
 .casefile-folder .casefile-body {
   opacity: 0;
 }
 .casefile-folder.cf-open .casefile-body {
-  animation: casefile-contents 560ms cubic-bezier(0.22, 1, 0.36, 1) 1120ms both;
+  animation: casefile-contents 460ms cubic-bezier(0.22, 1, 0.36, 1) 720ms both;
 }
 
 /* Reduced-motion: no flip, just fade contents in. */

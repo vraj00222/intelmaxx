@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseMission, newCaseNumber } from "@/lib/agents/orchestrator";
+import { parseMission, newCaseNumber, fallbackMission } from "@/lib/agents/orchestrator";
 import { runFoxhound } from "@/lib/agents/funding";
 import { runWiretap } from "@/lib/agents/signals";
 import { runGhostnet } from "@/lib/agents/opensource";
@@ -9,9 +9,12 @@ import type { InvestigationPayload, LikelyHiringDossier } from "@/lib/agents/typ
 import type { Provider } from "@/lib/gemma";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Vercel Fluid Compute allows up to 300s. We keep the internal route deadline
+// tighter so we always return *something* (even a degraded payload) before
+// Vercel guillotines us at the platform edge.
+export const maxDuration = 300;
 
-const ROUTE_DEADLINE_MS = 50_000;
+const ROUTE_DEADLINE_MS = 90_000;
 
 /** Race a promise against a deadline; on miss, resolve with `fallback` instead of hanging. */
 function withDeadline<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
@@ -49,9 +52,16 @@ export async function POST(req: NextRequest) {
     const provider: Provider | undefined =
       body.provider === "ollama" || body.provider === "novita" ? body.provider : undefined;
 
-    // 1. Parse mission via Gemma (classifies mission_type: hiring / oss_contrib / research / general)
+    // 1. Parse mission via Gemma (classifies mission_type: hiring / oss_contrib / research / general).
+    //    Hard-capped at 10s — if the LLM provider is degraded we fall back to
+    //    the heuristic mission brief rather than letting the whole route hang.
     const t0 = Date.now();
-    const mission = await parseMission(query, provider);
+    const mission = await withDeadline(
+      parseMission(query, provider),
+      10_000,
+      fallbackMission(query),
+      "parseMission"
+    );
     console.log(`[investigate] parseMission took ${Date.now() - t0}ms`, {
       mission_type: mission.mission_type,
       industry: mission.industry,
