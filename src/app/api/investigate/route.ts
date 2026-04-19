@@ -16,6 +16,38 @@ export const maxDuration = 300;
 
 const ROUTE_DEADLINE_MS = 90_000;
 
+// In-memory result cache, keyed by (normalized query + provider). TTL is
+// short — just long enough that hitting the same prompt twice in a demo or
+// a refresh returns the identical payload. Without this, temperature drift,
+// deadline-boundary flipping, and network jitter make repeated identical
+// prompts return visibly different results, which reads as "the app is broken"
+// to a user. Cache is per-Lambda-instance on Vercel; that's fine for the
+// "two runs 10s apart" symptom the user hits.
+const CACHE_TTL_MS = 90_000;
+const CACHE_MAX = 50;
+const _cache = new Map<string, { at: number; payload: InvestigationPayload }>();
+
+function cacheKey(query: string, provider: Provider | undefined): string {
+  return `${provider || "default"}::${query.toLowerCase().replace(/\s+/g, " ").trim()}`;
+}
+function cacheGet(key: string): InvestigationPayload | null {
+  const hit = _cache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    _cache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+function cacheSet(key: string, payload: InvestigationPayload): void {
+  if (_cache.size >= CACHE_MAX) {
+    // Evict the oldest entry — Map iteration is insertion-order.
+    const firstKey = _cache.keys().next().value;
+    if (firstKey) _cache.delete(firstKey);
+  }
+  _cache.set(key, { at: Date.now(), payload });
+}
+
 /** Race a promise against a deadline; on miss, resolve with `fallback` instead of hanging. */
 function withDeadline<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
   return new Promise<T>((resolve) => {
@@ -51,6 +83,15 @@ export async function POST(req: NextRequest) {
     const query = rawQuery.replace(/\s+/g, " ");
     const provider: Provider | undefined =
       body.provider === "ollama" || body.provider === "novita" ? body.provider : undefined;
+
+    // Short-lived cache: identical prompt within 90s returns the identical
+    // payload. Keeps demo runs and accidental double-submits stable.
+    const key = cacheKey(query, provider);
+    const cached = cacheGet(key);
+    if (cached) {
+      console.log(`[investigate] cache HIT (${Date.now() - started}ms) for "${query.slice(0, 40)}"`);
+      return NextResponse.json(cached);
+    }
 
     // 1. Parse mission via Gemma (classifies mission_type: hiring / oss_contrib / research / general).
     //    Hard-capped at 10s — if the LLM provider is degraded we fall back to
@@ -139,6 +180,7 @@ export async function POST(req: NextRequest) {
       elapsed_ms: Date.now() - started,
     };
 
+    cacheSet(key, payload);
     return NextResponse.json(payload);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

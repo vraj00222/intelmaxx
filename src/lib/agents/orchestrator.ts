@@ -109,7 +109,11 @@ No preamble, no markdown fences.`;
         { role: "system", content: system },
         { role: "user", content: enriched },
       ],
-      { provider, max_tokens: 400, temperature: 0.15 }
+      // Temperature 0: the mission-parse is a classification, not a creative
+      // task. Same brief must produce the same keyword list — otherwise every
+      // downstream search returns a slightly different set of matches and the
+      // user sees results "flicker" between runs.
+      { provider, max_tokens: 400, temperature: 0 }
     );
   } catch (e) {
     console.warn("[parseMission] Gemma failed, falling back to heuristic", e);
