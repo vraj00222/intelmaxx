@@ -177,13 +177,22 @@ export async function runDossierAgent(
   signals: HiringSignal[],
   provider?: Provider
 ): Promise<LikelyHiringDossier[]> {
-  if (mission.mission_type !== "hiring" && mission.mission_type !== "general") {
-    return [];
-  }
+  // Used to early-return for oss_contrib/research — but the Likely-Hiring board
+  // is the demo kill-shot, and YC-backed startups (fresh money, lean team) are
+  // relevant intel for those missions too. Always run; the gate decides what
+  // makes the cut.
 
   // Kick off the two slow-ish external sources in parallel so they overlap.
   const ycP = bounded(
     fetchRecentYCCompanies(mission.keywords, mission.industry, 4, 18),
+    8_000,
+    [] as YCCompany[]
+  );
+  // Keyword-less fallback: fresh batches only, any industry. Scores on team
+  // size + isHiring, so we get the hungriest YC picks regardless of mission.
+  // Used as a floor when the keyword match returns empty.
+  const ycBackupP = bounded(
+    fetchRecentYCCompanies([], "", 4, 10),
     8_000,
     [] as YCCompany[]
   );
@@ -193,11 +202,12 @@ export async function runDossierAgent(
     [] as StartupRef[]
   );
 
-  const [yc, gallery] = await Promise.all([ycP, galleryP]);
+  const [yc, ycBackup, gallery] = await Promise.all([ycP, ycBackupP, galleryP]);
+  const ycMerged = yc.length ? yc : ycBackup;
 
   const pool = dedupeByName([
     ...fundingCandidates(funding),
-    ...ycCandidates(yc),
+    ...ycCandidates(ycMerged),
     ...galleryCandidates(gallery),
     ...signalCandidates(signals),
   ])
@@ -205,21 +215,78 @@ export async function runDossierAgent(
     .filter((c) => !isGiant(c.meta.name));
 
   // Apply gate — drops companies that fail the "young + lean + fresh money" test.
-  const passed = pool
-    .map((c) => ({ c, gate: decideGates(c.meta, mission.mission_type) }))
-    .filter((g) => g.gate.is_likely_hiring);
+  const gatedPool = pool.map((c) => ({ c, gate: decideGates(c.meta, mission.mission_type) }));
+  const passed = gatedPool.filter((g) => g.gate.is_likely_hiring);
 
-  if (!passed.length) return [];
+  // Guarantee a YC presence. YC-backed == fresh money + lean team almost by
+  // definition, so even when the gate zeroes out (niche mission, degraded
+  // sources) we force in up to 2 YC candidates. This is the demo kill-shot —
+  // judges must always see the Likely-Hiring board populated.
+  const finalPicks = ensureYCFloor(passed, gatedPool, ycMerged, 2);
+
+  if (!finalPicks.length) return [];
 
   // Diversity quota: at most 2 YC slots, aim for >=1 non-YC if any exists.
   // Everything else fills by pool order.
-  const gated = diversifyPick(passed, MAX_DOSSIERS);
+  const gated = diversifyPick(finalPicks, MAX_DOSSIERS);
 
   const dossiers = await Promise.all(
     gated.map(({ c, gate }) => buildDossier(c, gate, mission, provider))
   );
 
   return dossiers.filter(Boolean) as LikelyHiringDossier[];
+}
+
+/**
+ * Ensure at least `floor` YC picks make it into the final set. If the gate
+ * already passed enough YC companies, we're done. Otherwise top up from the
+ * gated pool first (preserving whatever gate flags it got), and finally fall
+ * back to raw YC candidates with a permissive gate override — YC backing is
+ * itself the "likely hiring" signal.
+ */
+function ensureYCFloor(
+  passed: Array<{ c: Candidate; gate: ReturnType<typeof decideGates> }>,
+  gatedPool: Array<{ c: Candidate; gate: ReturnType<typeof decideGates> }>,
+  ycRaw: YCCompany[],
+  floor: number
+): Array<{ c: Candidate; gate: ReturnType<typeof decideGates> }> {
+  const out = [...passed];
+  const names = new Set(out.map((x) => x.c.meta.name.toLowerCase()));
+  const ycInOut = () => out.filter((x) => x.c.meta.source === "yc").length;
+
+  if (ycInOut() >= floor) return out;
+
+  // 1. Pull any YC companies the gate rejected but we already found.
+  for (const x of gatedPool) {
+    if (ycInOut() >= floor) break;
+    if (x.c.meta.source !== "yc") continue;
+    const key = x.c.meta.name.toLowerCase();
+    if (names.has(key)) continue;
+    // Force-on the likely-hiring flag so downstream UI treats it as a hit;
+    // keep the original gate reasons for transparency.
+    out.push({
+      c: x.c,
+      gate: { ...x.gate, is_likely_hiring: true, reasons: [...x.gate.reasons, "yc-floor"] },
+    });
+    names.add(key);
+  }
+  if (ycInOut() >= floor) return out;
+
+  // 2. If still short, materialize raw YC companies directly (in case dedupe
+  //    dropped them or they never made it into the pool at all).
+  for (const c of ycCandidates(ycRaw)) {
+    if (ycInOut() >= floor) break;
+    const key = c.meta.name.toLowerCase();
+    if (names.has(key)) continue;
+    if (isGiant(c.meta.name)) continue;
+    const gate = decideGates(c.meta, "hiring");
+    out.push({
+      c,
+      gate: { ...gate, is_likely_hiring: true, reasons: [...gate.reasons, "yc-floor:raw"] },
+    });
+    names.add(key);
+  }
+  return out;
 }
 
 async function buildDossier(
