@@ -31,10 +31,21 @@ export async function POST(req: NextRequest) {
   const started = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
-    const query = typeof body.query === "string" ? body.query.trim() : "";
-    if (!query) {
-      return NextResponse.json({ error: "Missing 'query'" }, { status: 400 });
+    const rawQuery = typeof body.query === "string" ? body.query.trim() : "";
+    if (!rawQuery) {
+      return NextResponse.json(
+        { error: "Describe a mission — a sentence about who you want to work for or what you're looking for." },
+        { status: 400 }
+      );
     }
+    if (rawQuery.length > 1000) {
+      return NextResponse.json(
+        { error: "Mission brief is too long — keep it under 1000 characters so the agents can focus." },
+        { status: 400 }
+      );
+    }
+    // Collapse whitespace/newlines so pasted walls-of-text don't confuse Gemma.
+    const query = rawQuery.replace(/\s+/g, " ");
     const provider: Provider | undefined =
       body.provider === "ollama" || body.provider === "novita" ? body.provider : undefined;
 

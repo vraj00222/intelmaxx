@@ -57,6 +57,7 @@ export default function CaseInput({ onSubmit, disabled }: Props) {
             onKeyDown={handleKey}
             placeholder={placeholder}
             rows={3}
+            maxLength={500}
             disabled={disabled}
             spellCheck={false}
             className="min-h-[120px] w-full resize-none bg-transparent px-5 pt-10 pb-16 font-mono text-[17px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]/70 disabled:opacity-60"
@@ -69,8 +70,16 @@ export default function CaseInput({ onSubmit, disabled }: Props) {
               <span className="opacity-40">|</span>
               <span>⌘↵ DEPLOY</span>
               <span className="opacity-40">|</span>
-              <span className={value ? "text-[var(--accent-amber)]" : ""}>
-                {value.length.toString().padStart(3, "0")} CHAR
+              <span
+                className={
+                  value.length >= 450
+                    ? "text-[var(--accent-red)]"
+                    : value
+                    ? "text-[var(--accent-amber)]"
+                    : ""
+                }
+              >
+                {value.length.toString().padStart(3, "0")} / 500 CHAR
               </span>
             </div>
             <button

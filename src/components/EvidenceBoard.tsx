@@ -13,6 +13,49 @@ export default function EvidenceBoard({ payload }: Props) {
   if (!payload) return null;
   const { funding, signals, oss, profiler, likely_hiring } = payload;
 
+  // Every downstream source came back empty — either the query was too niche
+  // or every external service tripped on us. Show a friendly empty state
+  // instead of a blank board so judges never see dead whitespace.
+  const totalIntel =
+    (funding?.length || 0) +
+    (signals?.length || 0) +
+    (oss?.length || 0) +
+    (likely_hiring?.length || 0) +
+    (profiler?.top_targets?.length || 0);
+  if (totalIntel === 0) {
+    return (
+      <section>
+        <div className="relative overflow-hidden rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] p-8 text-center">
+          <div className="mb-3 text-[10px] tracking-[0.3em] text-[var(--accent-amber)]">
+            FIELD REPORT · NO INTEL SURFACED
+          </div>
+          <h3 className="typewriter mb-3 text-2xl text-[var(--text-primary)]">
+            The board came back empty.
+          </h3>
+          <p className="mx-auto max-w-lg font-mono text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Every agent reported in, but nothing matched. The brief may be too
+            narrow, or the upstream feeds may be rate-limiting. Try a broader
+            mission — industry + stage + role tends to hit more lanes.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {[
+              "AI infrastructure startups hiring founding engineers",
+              "YC W26 dev tools backend roles",
+              "seed fintech founding engineers",
+            ].map((q) => (
+              <span
+                key={q}
+                className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-1 font-mono text-[10px] tracking-[0.15em] text-[var(--text-muted)]"
+              >
+                e.g. {q}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const hotNames = new Set([
     ...(profiler.top_targets || []).slice(0, 3).map((t) => t.company_name.toLowerCase()),
     ...(likely_hiring || []).map((d) => d.company_name.toLowerCase()),

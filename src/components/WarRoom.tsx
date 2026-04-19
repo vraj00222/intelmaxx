@@ -31,6 +31,7 @@ export default function WarRoom() {
   );
   const [payload, setPayload] = useState<InvestigationPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastQuery, setLastQuery] = useState<string>("");
   const [provider, setProvider] = useState<Provider>("novita");
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function WarRoom() {
     setPhase("deploying");
     setError(null);
     setPayload(null);
+    setLastQuery(query);
 
     // Optimistic staged animation of agent deployment
     setStatuses({
@@ -182,6 +184,15 @@ export default function WarRoom() {
                   TRANSMISSION FAILURE
                 </div>
                 <p className="text-[var(--text-primary)]/80">{error}</p>
+                {lastQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit(lastQuery)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-sm border border-[var(--accent-amber)] bg-[var(--accent-amber)]/10 px-3 py-1.5 text-[10px] tracking-[0.3em] text-[var(--accent-amber)] transition hover:bg-[var(--accent-amber)]/25"
+                  >
+                    <span>↻ REDEPLOY AGENTS</span>
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
