@@ -15,15 +15,19 @@ export async function runGhostnet(mission: MissionBrief, _provider?: Provider): 
   // search doesn't require a 100-star bar on day one.
   const recent = new Date(Date.now() - 60 * 86400 * 1000).toISOString().slice(0, 10);
   const topic = slugify(firstKw || industryQ.split(" ")[0] || "");
+  // Upper star cap: mega-repos (React, VS Code, etc.) already get plenty of
+  // light and drown out the smaller-but-contributable projects the user is
+  // actually here for. Range syntax keeps GitHub's ranking logic intact.
+  const STAR_CAP = 30000;
   const queries = [
     // Broadest: single best keyword + stars, recent activity preferred.
-    pairKw ? `${pairKw} stars:>50 pushed:>${recent}` : "",
+    pairKw ? `${pairKw} stars:50..${STAR_CAP} pushed:>${recent}` : "",
     // Industry-as-topic — GitHub's topic index is hand-curated and high signal.
-    topic ? `topic:${topic} stars:>50 pushed:>${recent}` : "",
+    topic ? `topic:${topic} stars:50..${STAR_CAP} pushed:>${recent}` : "",
     // Plain industry term, no keyword stacking.
-    industryQ ? `${industryQ} stars:>30 pushed:>${recent}` : "",
+    industryQ ? `${industryQ} stars:30..${STAR_CAP} pushed:>${recent}` : "",
     // Fallback: the first keyword alone, any recent push.
-    firstKw ? `${firstKw} stars:>30 pushed:>${recent}` : "",
+    firstKw ? `${firstKw} stars:30..${STAR_CAP} pushed:>${recent}` : "",
   ].filter(Boolean);
 
   const resultSets = await Promise.all(queries.map((q) => searchRepos(q, 8).catch(() => [])));
@@ -34,6 +38,7 @@ export async function runGhostnet(mission: MissionBrief, _provider?: Provider): 
   const cutoffMs = Date.now() - 90 * 86400 * 1000;
   const byId = new Map<number, (typeof all)[0]>();
   for (const r of all) {
+    if (r.stargazers_count > STAR_CAP) continue;
     const t = Date.parse(r.pushed_at || "");
     if (!Number.isNaN(t) && t < cutoffMs) continue;
     byId.set(r.id, r);
