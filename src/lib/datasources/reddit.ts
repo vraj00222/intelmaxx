@@ -139,3 +139,130 @@ export async function findCultureRedFlags(
 
   return flags;
 }
+
+// ────────────────────────────────────────────────────────────────
+// Positive / neutral chatter — the flip side of red flags
+// ────────────────────────────────────────────────────────────────
+
+const BUZZ_SUBS = [
+  "startups",
+  "ycombinator",
+  "programming",
+  "cscareerquestions",
+  "webdev",
+  "MachineLearning",
+  "sideproject",
+  "indiehackers",
+];
+
+const POSITIVE_KEYWORDS = [
+  "launched",
+  "launch",
+  "love this",
+  "impressive",
+  "product hunt",
+  "show hn",
+  "raised",
+  "hiring",
+  "we are hiring",
+  "open roles",
+  "open positions",
+  "just joined",
+  "excited to announce",
+];
+
+export type CompanyChatter = {
+  positive: Array<{
+    headline: string;
+    excerpt: string;
+    subreddit: string;
+    permalink: string;
+    score: number;
+    matched: string;
+  }>;
+  red_flags: CultureRedFlag[];
+  hiring_buzz: Array<{
+    headline: string;
+    subreddit: string;
+    permalink: string;
+    score: number;
+  }>;
+};
+
+/**
+ * One consolidated Reddit sweep per company. Pulls up to 20 hits in a single
+ * call, then splits into positive / red-flag / hiring-buzz buckets — cheaper
+ * than three separate requests and Reddit rate-limits HARD.
+ */
+export async function findCompanyChatter(companyName: string): Promise<CompanyChatter> {
+  const clean = (companyName || "").trim();
+  const empty: CompanyChatter = { positive: [], red_flags: [], hiring_buzz: [] };
+  if (!clean || clean.length < 2) return empty;
+
+  const query = `"${clean}"`;
+  const hits = await searchReddit(query, 25, "year");
+  if (!hits.length) return empty;
+
+  const lowerName = clean.toLowerCase();
+  const positive: CompanyChatter["positive"] = [];
+  const red_flags: CultureRedFlag[] = [];
+  const hiring_buzz: CompanyChatter["hiring_buzz"] = [];
+
+  for (const h of hits) {
+    const blob = `${h.title || ""} ${h.selftext || ""}`;
+    const low = blob.toLowerCase();
+    if (!low.includes(lowerName)) continue;
+    if ((h.score ?? 0) < 2) continue;
+
+    const sub = (h.subreddit || "").toLowerCase();
+    const permalink = `https://www.reddit.com${h.permalink}`;
+    const headline = (h.title || "").slice(0, 140);
+    const excerpt = blob.replace(/\s+/g, " ").slice(0, 160);
+
+    // Red-flag check
+    const isCareerSub =
+      CULTURE_SUBS.includes(sub) ||
+      sub.startsWith("jobs") ||
+      sub.includes("career") ||
+      sub.includes("work");
+    const redMatch = RED_FLAG_KEYWORDS.find((k) => low.includes(k));
+    if (isCareerSub && redMatch && red_flags.length < 3) {
+      red_flags.push({
+        signal: redMatch,
+        evidence: excerpt,
+        subreddit: h.subreddit,
+        permalink,
+        score: h.score,
+      });
+      continue;
+    }
+
+    // Hiring-buzz check — posts mentioning the company + hiring words
+    const hiringHit = /\b(hiring|open roles|open positions|we are hiring|looking for|join our team)\b/i.test(blob);
+    if (hiringHit && hiring_buzz.length < 3) {
+      hiring_buzz.push({
+        headline,
+        subreddit: h.subreddit,
+        permalink,
+        score: h.score,
+      });
+      continue;
+    }
+
+    // Positive / neutral buzz
+    const isBuzzSub = BUZZ_SUBS.includes(sub) || sub.includes("start") || sub.includes("ai");
+    const posMatch = POSITIVE_KEYWORDS.find((k) => low.includes(k));
+    if (isBuzzSub && posMatch && positive.length < 3) {
+      positive.push({
+        headline,
+        excerpt,
+        subreddit: h.subreddit,
+        permalink,
+        score: h.score,
+        matched: posMatch,
+      });
+    }
+  }
+
+  return { positive, red_flags, hiring_buzz };
+}

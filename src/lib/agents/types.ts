@@ -80,6 +80,49 @@ export type ProfilerReport = {
   total_signals_detected: number;
 };
 
+// ─── LIKELY HIRING dossier — replaces/augments top_targets for hiring missions ───
+
+export type PersonDossier = {
+  name: string | null;
+  title: "CEO" | "CTO" | "Founder";
+  x_url: string | null;
+  linkedin_url: string | null;
+  email_patterns: string[];
+};
+
+export type RedditChatterItem = {
+  headline: string;
+  excerpt?: string;
+  subreddit: string;
+  permalink: string;
+  score: number;
+  matched?: string;
+};
+
+export type LikelyHiringDossier = {
+  company_name: string;
+  domain: string | null;
+  source: "funding" | "yc" | "gallery";
+  source_label: string; // human-readable e.g. "FOXHOUND: Series A · $4.2M"
+  one_liner: string;
+  funding_amount?: string;
+  funding_stage?: string;
+  funding_date?: string;
+  yc_batch?: string;
+  team_size?: number;
+  age_years?: number;
+  url?: string; // canonical company URL / news URL
+  ceo: PersonDossier | null;
+  cto: PersonDossier | null;
+  engineers_linkedin: string[];
+  reddit_positive: RedditChatterItem[];
+  reddit_red_flags: RedditChatterItem[];
+  reddit_hiring_buzz: RedditChatterItem[];
+  cold_email_subject: string;
+  cold_email_body: string;
+  gate_reasons: string[];
+};
+
 export type AgentStatus = "standby" | "deployed" | "investigating" | "intel_acquired" | "failed";
 
 export type AgentCode = "FOXHOUND" | "WIRETAP" | "GHOSTNET" | "PROFILER";
@@ -90,6 +133,7 @@ export type InvestigationPayload = {
   signals: HiringSignal[];
   oss: OSSIntel[];
   profiler: ProfilerReport;
+  likely_hiring: LikelyHiringDossier[];
   case_number: string;
   elapsed_ms: number;
 };

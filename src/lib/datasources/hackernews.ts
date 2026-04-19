@@ -51,12 +51,18 @@ export async function searchShowHN(
   return data.hits || [];
 }
 
-/** Find the most recent "Ask HN: Who is hiring?" thread ID. */
+/** Find the most recent "Ask HN: Who is hiring?" thread ID. Uses date-sorted
+ *  endpoint so we always get THIS month's thread, never an older one. */
 export async function findWhoIsHiringThread(): Promise<HNHit | null> {
   const data = await hn<{ hits: HNHit[] }>(
-    `/search?query=${encodeURIComponent("Ask HN: Who is hiring?")}&tags=story,author_whoishiring&hitsPerPage=1`
+    `/search_by_date?query=${encodeURIComponent("Ask HN: Who is hiring?")}&tags=story,author_whoishiring&hitsPerPage=3`
   );
-  return data.hits?.[0] || null;
+  // Pick the most recent hit whose title actually begins with "Ask HN: Who is hiring"
+  // (Algolia sometimes returns unrelated stories the account posted.)
+  const hits = (data.hits || []).filter((h) =>
+    /ask hn:\s*who is hiring/i.test(h.title || "")
+  );
+  return hits[0] || data.hits?.[0] || null;
 }
 
 type HNComment = {

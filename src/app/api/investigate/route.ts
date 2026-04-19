@@ -4,7 +4,8 @@ import { runFoxhound } from "@/lib/agents/funding";
 import { runWiretap } from "@/lib/agents/signals";
 import { runGhostnet } from "@/lib/agents/opensource";
 import { runProfiler, buildProfilerFallback } from "@/lib/agents/matcher";
-import type { InvestigationPayload } from "@/lib/agents/types";
+import { runDossierAgent } from "@/lib/agents/dossier";
+import type { InvestigationPayload, LikelyHiringDossier } from "@/lib/agents/types";
 import type { Provider } from "@/lib/gemma";
 
 export const runtime = "nodejs";
@@ -82,17 +83,29 @@ export async function POST(req: NextRequest) {
       funding: funding.length, signals: signals.length, oss: oss.length,
     });
 
-    // 3. PROFILER — internally splits into 3 parallel Gemma calls + overlaps
-    //    Reddit red-flag enrichment. See matcher.ts.
+    // 3. PROFILER + DOSSIER agent — run in parallel against the remaining budget.
+    //    PROFILER = 3 Gemma calls for top_targets/briefings/moat (see matcher.ts).
+    //    DOSSIER  = YC + funding + signals → gated → DDG people lookup + Reddit
+    //               chatter + cold email drafts (see dossier.ts).
     const remaining = Math.max(5_000, ROUTE_DEADLINE_MS - (Date.now() - started));
     const t2 = Date.now();
-    const profiler = await withDeadline(
-      runProfiler(mission, funding, signals, oss, provider),
-      remaining,
-      buildProfilerFallback(mission, funding, signals, oss),
-      "PROFILER"
-    );
-    console.log(`[investigate] profiler took ${Date.now() - t2}ms`);
+    const [profiler, likely_hiring] = await Promise.all([
+      withDeadline(
+        runProfiler(mission, funding, signals, oss, provider),
+        remaining,
+        buildProfilerFallback(mission, funding, signals, oss),
+        "PROFILER"
+      ),
+      withDeadline(
+        runDossierAgent(mission, funding, signals, provider),
+        remaining,
+        [] as LikelyHiringDossier[],
+        "DOSSIER"
+      ),
+    ]);
+    console.log(`[investigate] profiler+dossier took ${Date.now() - t2}ms`, {
+      dossiers: likely_hiring.length,
+    });
 
     const payload: InvestigationPayload = {
       mission,
@@ -100,6 +113,7 @@ export async function POST(req: NextRequest) {
       signals,
       oss,
       profiler,
+      likely_hiring,
       case_number: newCaseNumber(),
       elapsed_ms: Date.now() - started,
     };

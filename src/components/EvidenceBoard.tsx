@@ -3,6 +3,7 @@
 import type { InvestigationPayload } from "@/lib/agents/types";
 import CaseFileCard from "./CaseFileCard";
 import VoiceChip from "./VoiceChip";
+import LikelyHiringBoard from "./LikelyHiringBoard";
 
 type Props = {
   payload: InvestigationPayload | null;
@@ -10,16 +11,20 @@ type Props = {
 
 export default function EvidenceBoard({ payload }: Props) {
   if (!payload) return null;
-  const { funding, signals, oss, profiler } = payload;
+  const { funding, signals, oss, profiler, likely_hiring } = payload;
 
-  const hotNames = new Set(
-    (profiler.top_targets || []).slice(0, 3).map((t) => t.company_name.toLowerCase())
-  );
+  const hotNames = new Set([
+    ...(profiler.top_targets || []).slice(0, 3).map((t) => t.company_name.toLowerCase()),
+    ...(likely_hiring || []).map((d) => d.company_name.toLowerCase()),
+  ]);
 
-  // Moat: funders that closed in the last ~6 months (FOXHOUND flagged likely_to_hire).
-  // These are surfaced in a distinct section — this is the product's defensible edge.
-  const moat = funding.filter((f) => f.likely_to_hire);
-  const otherFunding = funding.filter((f) => !f.likely_to_hire);
+  // When the dossier agent returns results they SUPERSEDE the legacy moat block.
+  // We only fall back to moat + per-card voice briefings when dossiers are empty.
+  const hasDossiers = (likely_hiring || []).length > 0;
+  const moat = hasDossiers ? [] : funding.filter((f) => f.likely_to_hire);
+  const otherFunding = hasDossiers
+    ? funding
+    : funding.filter((f) => !f.likely_to_hire);
   const moatBriefingByName = new Map(
     (profiler.moat_briefings || []).map((b) => [b.company_name.toLowerCase(), b.text])
   );
@@ -33,6 +38,7 @@ export default function EvidenceBoard({ payload }: Props) {
 
   return (
     <section>
+      <LikelyHiringBoard dossiers={likely_hiring || []} />
       {moat.length ? (
         <div className="mb-8">
           <div className="mb-3 flex items-center gap-3 text-[10px] tracking-[0.3em] text-[var(--stamp-red)]">

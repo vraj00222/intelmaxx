@@ -18,7 +18,8 @@ export type RemoteOKJob = {
 
 export async function searchRemoteOK(
   keywords: string[],
-  limit = 20
+  limit = 20,
+  opts: { sinceDays?: number } = {}
 ): Promise<RemoteOKJob[]> {
   try {
     const res = await fetch("https://remoteok.com/api", {
@@ -28,8 +29,15 @@ export async function searchRemoteOK(
     });
     if (!res.ok) return [];
     const data = (await res.json()) as RemoteOKJob[];
-    // First entry is metadata — skip.
-    const jobs = data.filter((j) => j && j.id && j.position);
+    // First entry is metadata — skip. Also enforce recency cutoff so 2020 jobs
+    // can't leak through when a keyword happens to match an archived post.
+    const cutoff = opts.sinceDays ? Date.now() - opts.sinceDays * 86400 * 1000 : 0;
+    const jobs = data.filter((j) => {
+      if (!j || !j.id || !j.position) return false;
+      if (!cutoff) return true;
+      const ts = j.epoch ? j.epoch * 1000 : Date.parse(j.date || "");
+      return !Number.isNaN(ts) && ts >= cutoff;
+    });
 
     if (!keywords.length) return jobs.slice(0, limit);
 

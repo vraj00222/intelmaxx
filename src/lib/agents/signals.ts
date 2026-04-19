@@ -40,9 +40,10 @@ export async function runWiretap(mission: MissionBrief, provider?: Provider): Pr
     // ignore
   }
 
-  // 2. Show HN posts (companies actively building = likely hiring)
-  const showHN = await searchShowHN(`${industry} ${kw}`, 10).catch(() => []);
-  const storyHits = await searchStories(`${industry} hiring ${roleType}`, 8).catch(() => []);
+  // 2. Show HN posts (companies actively building = likely hiring) — enforce
+  //    45-day recency so stale posts (e.g. 2020 launches) don't leak through.
+  const showHN = await searchShowHN(`${industry} ${kw}`, 10, { sinceDays: 45 }).catch(() => []);
+  const storyHits = await searchStories(`${industry} hiring ${roleType}`, 8, { sinceDays: 30 }).catch(() => []);
 
   // 3. RemoteOK — real job postings, often from off-LinkedIn startups.
   const remoteKeywords = [
@@ -50,7 +51,7 @@ export async function runWiretap(mission: MissionBrief, provider?: Provider): Pr
     roleType,
     ...mission.keywords.slice(0, 4),
   ].filter(Boolean);
-  const remoteJobs = await searchRemoteOK(remoteKeywords, 12).catch(() => []);
+  const remoteJobs = await searchRemoteOK(remoteKeywords, 12, { sinceDays: 45 }).catch(() => []);
 
   const evidence = {
     who_is_hiring: hiringComments,
