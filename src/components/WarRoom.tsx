@@ -309,53 +309,30 @@ const SUGGESTED_MISSIONS: { label: string; query: string }[] = [
 
 function IdleHero({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <section className="mb-8">
-      <div className="inline-flex items-center gap-2 rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber)]/10 px-3 py-1 text-[10px] tracking-[0.3em] text-[var(--accent-amber)]">
-        <span className="pulse-dot" style={{ background: "var(--accent-amber)", color: "var(--accent-amber)" }} />
-        <span>DISPATCH READY · 4 AGENTS ONLINE</span>
-      </div>
-      <h1 className="mt-4 typewriter text-[clamp(28px,4.6vw,54px)] leading-[1.05] text-[var(--text-primary)]">
+    <section className="mb-6">
+      <h1 className="typewriter text-[clamp(28px,4.4vw,52px)] leading-[1.05] text-[var(--text-primary)]">
         Palantir Gotham, but for your career.
       </h1>
-      <p className="mt-3 max-w-2xl font-mono text-[14px] leading-relaxed text-[var(--text-secondary)]">
-        Describe the mission. Four AI agents —{" "}
-        <em className="not-italic text-[var(--text-primary)]">FOXHOUND</em>,{" "}
-        <em className="not-italic text-[var(--text-primary)]">WIRETAP</em>,{" "}
-        <em className="not-italic text-[var(--text-primary)]">GHOSTNET</em>, and{" "}
-        <em className="not-italic text-[var(--text-primary)]">PROFILER</em>{" "}
-        — deploy in parallel and return with funding intel, hiring signals, open-source backdoors, and a ranked dossier.
-        Voice briefing narrated in noir detective style.
+      <p className="mt-3 max-w-2xl font-mono text-[13px] leading-relaxed text-[var(--text-secondary)]">
+        Four agents deploy in parallel. Funding intel, hiring signals,
+        open-source backdoors, ranked dossier. Every lead off-grid —{" "}
+        <span className="text-[var(--stamp-red)]">never LinkedIn</span>. Type{" "}
+        <code className="text-[var(--accent-amber)]">/case &lt;company&gt;</code>{" "}
+        for a single-target dossier.
       </p>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <div className="inline-flex items-center gap-3 border-2 border-dashed border-[var(--stamp-red)] bg-[var(--stamp-red)]/10 px-3 py-1.5 text-[11px] tracking-[0.25em] text-[var(--stamp-red)]">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2 3 7v6c0 5 4 9 9 9s9-4 9-9V7l-9-5zm-1 14-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6z" />
-          </svg>
-          <span>EVERY LEAD · OFF-GRID · NOT ON LINKEDIN</span>
-        </div>
-        <code className="rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] px-2 py-1 font-mono text-[10px] tracking-[0.15em] text-[var(--text-secondary)]">
-          TIP · type <span className="text-[var(--accent-amber)]">/case &lt;company&gt;</span> for a single-target dossier
-        </code>
-      </div>
 
-      <div className="mt-6">
-        <div className="mb-2 flex items-center gap-3 text-[10px] tracking-[0.3em] text-[var(--text-muted)]">
-          <span>SUGGESTED MISSIONS · ONE-CLICK DEPLOY</span>
-          <span className="h-px flex-1 bg-[var(--border-subtle)]" />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {SUGGESTED_MISSIONS.map((m) => (
-            <button
-              key={m.label}
-              type="button"
-              onClick={() => onPick(m.query)}
-              className="group rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] px-3 py-1.5 text-[10px] tracking-[0.22em] text-[var(--text-secondary)] transition hover:border-[var(--accent-amber)] hover:bg-[var(--accent-amber)]/10 hover:text-[var(--accent-amber)]"
-              title={m.query}
-            >
-              <span className="typewriter">{m.label}</span>
-            </button>
-          ))}
-        </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        {SUGGESTED_MISSIONS.map((m) => (
+          <button
+            key={m.label}
+            type="button"
+            onClick={() => onPick(m.query)}
+            className="rounded-sm border border-[var(--border-strong)] bg-[var(--bg-panel)] px-3 py-1.5 font-mono text-[10px] tracking-[0.22em] text-[var(--text-secondary)] transition hover:border-[var(--accent-amber)] hover:bg-[var(--accent-amber)]/10 hover:text-[var(--accent-amber)]"
+            title={m.query}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
     </section>
   );
