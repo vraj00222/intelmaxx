@@ -68,9 +68,9 @@ export async function gemmaComplete(
 }
 
 // Per-call hard ceiling. If Novita (or Ollama) doesn't respond in this window, we
-// abort and either retry once or return a degraded fallback — never let a call
-// hang indefinitely.
-const GEMMA_TIMEOUT_MS = 25_000;
+// abort and bubble up — the caller has a deterministic fallback, so waiting for
+// a retry just burns the route deadline without improving output.
+const GEMMA_TIMEOUT_MS = 12_000;
 
 async function ollamaComplete(
   messages: GemmaMessage[],
@@ -111,36 +111,27 @@ async function novitaComplete(
     max_tokens: opts.max_tokens ?? 1200,
   };
 
-  // Try once, retry once on timeout/abort. Any other error bubbles up.
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const res = await fetch(`${NOVITA_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${getNovitaKey()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        cache: "no-store",
-        signal: AbortSignal.timeout(GEMMA_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(`Gemma request failed (${res.status}): ${text.slice(0, 300)}`);
-      }
-      const data = await res.json();
-      const content: string | undefined = data?.choices?.[0]?.message?.content;
-      if (!content) throw new Error("Gemma returned empty content");
-      return content;
-    } catch (e) {
-      const isTimeout =
-        e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-      if (!isTimeout || attempt === 2) throw e;
-      // fall through to retry once on timeout
-      console.warn(`[gemma] timeout on attempt ${attempt}, retrying once...`);
-    }
+  // Single attempt. No retry — retries stack on top of the outer agent
+  // deadline and make a slow provider look like a hang. Callers must have a
+  // deterministic fallback so a timeout is survivable.
+  const res = await fetch(`${NOVITA_BASE}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getNovitaKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+    signal: AbortSignal.timeout(GEMMA_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gemma request failed (${res.status}): ${text.slice(0, 300)}`);
   }
-  throw new Error("Gemma request failed after retry");
+  const data = await res.json();
+  const content: string | undefined = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Gemma returned empty content");
+  return content;
 }
 
 /**
@@ -151,9 +142,8 @@ export async function gemmaJSON<T = unknown>(
   messages: GemmaMessage[],
   opts: GemmaOptions = {}
 ): Promise<T> {
-  // novitaComplete already handles one timeout-retry internally. If parsing fails
-  // here we throw — callers must have a fallback so we don't stack retries on top
-  // of retries and blow past the route deadline.
+  // Single-shot. If the provider is slow or parsing fails, the caller's
+  // deterministic fallback kicks in — we never retry inside the LLM layer.
   const raw = await gemmaComplete(messages, { temperature: 0.25, ...opts });
   return parseJSONLoose<T>(raw);
 }

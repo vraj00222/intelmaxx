@@ -1,24 +1,37 @@
-import { gemmaJSON, type Provider } from "@/lib/gemma";
+import type { Provider } from "@/lib/gemma";
 import { searchRepos, countGoodFirstIssues, hasContributingGuide } from "@/lib/datasources/github";
 import type { OSSIntel, MissionBrief } from "./types";
 
-export async function runGhostnet(mission: MissionBrief, provider?: Provider): Promise<OSSIntel[]> {
+export async function runGhostnet(mission: MissionBrief, _provider?: Provider): Promise<OSSIntel[]> {
   const industryQ = cleanQ(mission.industry);
-  const kw = mission.keywords.slice(0, 2).map(cleanQ).join(" ");
+  const keywordTokens = mission.keywords.map(cleanQ).filter(Boolean);
+  const firstKw = keywordTokens[0] || "";
+  const pairKw = keywordTokens.slice(0, 2).join(" ");
 
-  // Dynamic "pushed in the last 30 days" cutoff so queries always reflect "now".
-  const pushedCutoff = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
+  // Cascade broad -> narrow. GitHub's search AND's every token, so stacking
+  // "devtools open source developer tools stars:>100 pushed:<date>" filters
+  // to near-zero. We start with looser queries and tighten only if we have
+  // too many results. Star thresholds are also softer so a "dev tool"
+  // search doesn't require a 100-star bar on day one.
+  const recent = new Date(Date.now() - 60 * 86400 * 1000).toISOString().slice(0, 10);
+  const topic = slugify(firstKw || industryQ.split(" ")[0] || "");
   const queries = [
-    `${industryQ} ${kw} stars:>100 pushed:>${pushedCutoff}`,
-    `${industryQ} topic:${industryQ.split(" ")[0] || "ai"} stars:>200 pushed:>${pushedCutoff}`,
-    `${kw || industryQ} stars:>300 language:typescript pushed:>${pushedCutoff}`,
+    // Broadest: single best keyword + stars, recent activity preferred.
+    pairKw ? `${pairKw} stars:>50 pushed:>${recent}` : "",
+    // Industry-as-topic — GitHub's topic index is hand-curated and high signal.
+    topic ? `topic:${topic} stars:>50 pushed:>${recent}` : "",
+    // Plain industry term, no keyword stacking.
+    industryQ ? `${industryQ} stars:>30 pushed:>${recent}` : "",
+    // Fallback: the first keyword alone, any recent push.
+    firstKw ? `${firstKw} stars:>30 pushed:>${recent}` : "",
   ].filter(Boolean);
 
   const resultSets = await Promise.all(queries.map((q) => searchRepos(q, 8).catch(() => [])));
   const all = resultSets.flat();
 
-  // Belt & braces — drop anything older than 30 days in case search was lenient.
-  const cutoffMs = Date.now() - 30 * 86400 * 1000;
+  // Soft recency floor at 90 days so well-maintained repos that push bi-monthly
+  // still surface. The original 30-day hard cutoff was eliminating most matches.
+  const cutoffMs = Date.now() - 90 * 86400 * 1000;
   const byId = new Map<number, (typeof all)[0]>();
   for (const r of all) {
     const t = Date.parse(r.pushed_at || "");
@@ -54,66 +67,46 @@ export async function runGhostnet(mission: MissionBrief, provider?: Provider): P
     })
   );
 
-  const system = `You are GHOSTNET, an open-source intelligence agent for IntelMaxxing.
-
-Given a mission brief and enriched GitHub repo data, return a JSON array of the best
-open-source contribution opportunities for the candidate. For each:
-
-{
-  "company_name": string,
-  "repo_url": string,
-  "stars": number,
-  "recent_activity_score": number,   // pass through
-  "has_contributing_guide": boolean,
-  "good_first_issues_count": number,
-  "oss_hiring_correlation": "high" | "medium" | "low",
-  "entry_strategy": string            // <= 30 words, a specific, actionable suggestion
-}
-
-Rules:
-- "oss_hiring_correlation" is your analytical call: companies that maintain active,
-  well-documented OSS with good-first-issues tend to hire from contributors.
-- Prefer high activity, >=1 good first issue, and relevance to the mission.
-- At most 5 items, best fit first.
-- Respond ONLY with a JSON array. No fences, no preamble.`;
-
-  const user = `MISSION BRIEF:
-${JSON.stringify(mission, null, 2)}
-
-ENRICHED REPOS:
-${JSON.stringify(enriched, null, 2)}`;
-
-  try {
-    const out = await gemmaJSON<OSSIntel[] | { results: OSSIntel[] }>(
-      [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      { max_tokens: 1600, temperature: 0.3, provider }
-    );
-    const arr = Array.isArray(out) ? out : out.results || [];
-    return arr.slice(0, 5);
-  } catch {
-    // Fallback: return a non-LLM list so the UI still has content
-    return enriched.slice(0, 5).map((r) => ({
+  // Deterministic synthesis — no LLM. A Gemma call here adds 8-15s and rarely
+  // improves on "most-stars + good-first-issues" as a ranker. If we ever want
+  // LLM-grade entry strategies, gate them behind an opt-in flag.
+  return enriched.slice(0, 5).map((r) => {
+    const correlation: "high" | "medium" | "low" =
+      r.good_first_issues_count > 5 && r.has_contributing_guide
+        ? "high"
+        : r.good_first_issues_count > 0 || r.has_contributing_guide
+        ? "medium"
+        : "low";
+    const entry_strategy =
+      r.good_first_issues_count > 0
+        ? `Scan the ${r.good_first_issues_count} good-first-issues and open a focused PR on ${r.repo_name}.`
+        : r.has_contributing_guide
+        ? `Read CONTRIBUTING.md, fix a docs gap or small bug, and ship a PR on ${r.repo_name}.`
+        : `Open a doc/typo PR on ${r.repo_name} to establish presence.`;
+    return {
       company_name: r.company_name,
       repo_url: r.repo_url,
       stars: r.stars,
       recent_activity_score: r.recent_activity_score,
       has_contributing_guide: r.has_contributing_guide,
       good_first_issues_count: r.good_first_issues_count,
-      oss_hiring_correlation:
-        r.good_first_issues_count > 5 && r.has_contributing_guide ? "high" : "medium",
-      entry_strategy:
-        r.good_first_issues_count > 0
-          ? `Scan ${r.good_first_issues_count} good-first-issues on ${r.repo_url} and open a PR.`
-          : `Open a doc/typo PR on ${r.repo_url} to establish presence.`,
-    }));
-  }
+      oss_hiring_correlation: correlation,
+      entry_strategy,
+    };
+  });
 }
 
 function cleanQ(s: string): string {
   return (s || "").replace(/[^a-z0-9 +\-]/gi, " ").trim();
+}
+
+/** Normalize a phrase into a single GitHub topic slug ("developer tools" -> "developer-tools"). */
+function slugify(s: string): string {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
 }
 
 function daysSince(iso: string): number {

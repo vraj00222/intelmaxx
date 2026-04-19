@@ -330,12 +330,15 @@ function IdleHero({ onPick }: { onPick: (q: string) => void }) {
       <p className="mt-3 max-w-2xl font-mono text-[13px] leading-relaxed text-[var(--text-secondary)]">
         Four agents deploy in parallel. Funding intel, hiring signals,
         open-source backdoors, ranked dossier. Every lead off-grid —{" "}
-        <span className="text-[var(--stamp-red)]">never LinkedIn</span>. Type{" "}
-        <code className="text-[var(--accent-amber)]">/case &lt;company&gt;</code>{" "}
-        for a single-target dossier.
+        <span className="text-[var(--stamp-red)]">never LinkedIn</span>.
       </p>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-sm border border-[var(--accent-amber)]/50 bg-[var(--accent-amber)]/10 px-2 py-1 font-mono text-[10px] tracking-[0.22em] text-[var(--accent-amber)]">
+          <span className="text-[var(--text-muted)]">TIP</span>
+          <span>·</span>
+          <code className="text-[var(--accent-amber)]">/case &lt;company&gt;</code>
+        </span>
         {SUGGESTED_MISSIONS.map((m) => (
           <button
             key={m.label}

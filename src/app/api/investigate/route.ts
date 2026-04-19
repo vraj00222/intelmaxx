@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const t0 = Date.now();
     const mission = await withDeadline(
       parseMission(query, provider),
-      10_000,
+      6_000,
       fallbackMission(query),
       "parseMission"
     );
@@ -109,39 +109,18 @@ export async function POST(req: NextRequest) {
       keywords: mission.keywords,
     });
 
-    // 2. Conditional dispatch by mission_type — skip irrelevant agents to save
-    //    latency & tokens. OSS / research queries don't need funding or hiring intel.
-    const type = mission.mission_type;
-    const wantFunding = type === "hiring" || type === "general";
-    const wantSignals = type === "hiring" || type === "general";
-    const wantOSS = true; // GHOSTNET is useful for every mission type
-
-    // Agent-phase deadline: whatever's done by then makes it into PROFILER; the rest
-    // is treated as empty. PROFILER then has the remaining budget.
-    const AGENT_DEADLINE = 28_000;
+    // 2. Deploy every agent in parallel. We used to gate FOXHOUND/WIRETAP off
+    //    for oss_contrib missions, but a dev-tool OSS query still benefits from
+    //    knowing which of those companies just raised money or posted "we're
+    //    hiring" on HN. Parallel fanout means running all four is no slower.
+    const AGENT_DEADLINE = 18_000;
     const t1 = Date.now();
     const [funding, signals, oss] = await Promise.all([
-      withDeadline(
-        wantFunding ? runFoxhound(mission, provider) : Promise.resolve([]),
-        AGENT_DEADLINE,
-        [],
-        "FOXHOUND"
-      ),
-      withDeadline(
-        wantSignals ? runWiretap(mission, provider) : Promise.resolve([]),
-        AGENT_DEADLINE,
-        [],
-        "WIRETAP"
-      ),
-      withDeadline(
-        wantOSS ? runGhostnet(mission, provider) : Promise.resolve([]),
-        AGENT_DEADLINE,
-        [],
-        "GHOSTNET"
-      ),
+      withDeadline(runFoxhound(mission, provider), AGENT_DEADLINE, [], "FOXHOUND"),
+      withDeadline(runWiretap(mission, provider), AGENT_DEADLINE, [], "WIRETAP"),
+      withDeadline(runGhostnet(mission, provider), AGENT_DEADLINE, [], "GHOSTNET"),
     ]);
     console.log(`[investigate] agents took ${Date.now() - t1}ms`, {
-      wantFunding, wantSignals, wantOSS,
       funding: funding.length, signals: signals.length, oss: oss.length,
     });
 
