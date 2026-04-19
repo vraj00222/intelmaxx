@@ -1,5 +1,6 @@
 import type { Provider } from "@/lib/gemma";
 import { searchRepos, countGoodFirstIssues, hasContributingGuide } from "@/lib/datasources/github";
+import { isGiant } from "./gating";
 import type { OSSIntel, MissionBrief } from "./types";
 
 export async function runGhostnet(mission: MissionBrief, _provider?: Provider): Promise<OSSIntel[]> {
@@ -15,10 +16,13 @@ export async function runGhostnet(mission: MissionBrief, _provider?: Provider): 
   // search doesn't require a 100-star bar on day one.
   const recent = new Date(Date.now() - 60 * 86400 * 1000).toISOString().slice(0, 10);
   const topic = slugify(firstKw || industryQ.split(" ")[0] || "");
-  // Upper star cap: mega-repos (React, VS Code, etc.) already get plenty of
-  // light and drown out the smaller-but-contributable projects the user is
-  // actually here for. Range syntax keeps GitHub's ranking logic intact.
-  const STAR_CAP = 30000;
+  // Upper star cap: mega-repos already get plenty of light and drown out the
+  // smaller, contributable projects the candidate is actually here for. 30k
+  // turned out to be too high — results clustered right at the ceiling
+  // (LangChain, ByteDance, Vercel Labs all at 29k). 12k is a better floor
+  // for "famous": still high-quality projects, but not the ones every new
+  // grad has already PR'd into.
+  const STAR_CAP = 12000;
   const queries = [
     // Broadest: single best keyword + stars, recent activity preferred.
     pairKw ? `${pairKw} stars:50..${STAR_CAP} pushed:>${recent}` : "",
@@ -39,6 +43,10 @@ export async function runGhostnet(mission: MissionBrief, _provider?: Provider): 
   const byId = new Map<number, (typeof all)[0]>();
   for (const r of all) {
     if (r.stargazers_count > STAR_CAP) continue;
+    // Filter megacorp-owned repos — same blocklist the DOSSIER agent uses.
+    // Check both the org name and the repo name, since orgs like "vercel-labs"
+    // or repos named "langchain" aren't caught by checking just one.
+    if (isGiant(r.owner?.login || "") || isGiant(r.name || "")) continue;
     const t = Date.parse(r.pushed_at || "");
     if (!Number.isNaN(t) && t < cutoffMs) continue;
     byId.set(r.id, r);

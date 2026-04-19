@@ -47,6 +47,14 @@ const GIANTS_BLOCKLIST: readonly string[] = [
   "figma", "canva", "notion", "linear", "discord", "reddit", "spotify",
   "tiktok", "bytedance", "twitter", "x corp", "anthropic", "openai",
   "tesla", "spacex", "nike", "disney", "walmart", "target",
+  // AI / dev-tool scaleups that already dominate every OSS leaderboard —
+  // even the -labs / -ai / -js suborgs read as famous to a contributor.
+  "vercel", "vercel-labs", "langchain", "langchain-ai", "supabase",
+  "hashicorp", "mongodb", "elastic", "redis", "cloudflare", "huggingface",
+  "hugging-face", "replicate", "fly", "planetscale", "railway",
+  // Frameworks / tools so established they're not "startups" anymore
+  "remix-run", "sveltejs", "nuxt", "astro", "vitejs", "vitest", "webpack",
+  "babel", "eslint", "prettier", "typescript", "tailwindlabs",
 ];
 
 export function isGiant(name: string): boolean {
