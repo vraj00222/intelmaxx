@@ -13,9 +13,16 @@ const EXAMPLES = [
 type Props = {
   onSubmit: (q: string) => void;
   disabled?: boolean;
+  /**
+   * Each time this counter bumps, `prefillValue` is copied into the textarea,
+   * the textarea gets focus, and the viewport scrolls to it. Quick-deploy
+   * chips use this so the user *sees* the brief land before hitting deploy.
+   */
+  prefillValue?: string;
+  prefillNonce?: number;
 };
 
-export default function CaseInput({ onSubmit, disabled }: Props) {
+export default function CaseInput({ onSubmit, disabled, prefillValue, prefillNonce }: Props) {
   const [value, setValue] = useState("");
   const [placeholder, setPlaceholder] = useState(EXAMPLES[0]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -29,6 +36,18 @@ export default function CaseInput({ onSubmit, disabled }: Props) {
     }, 3200);
     return () => clearInterval(id);
   }, [disabled, value]);
+
+  // Quick-deploy prefill: bump the nonce and we drop the value in + focus.
+  useEffect(() => {
+    if (prefillNonce === undefined || !prefillValue) return;
+    setValue(prefillValue);
+    const el = textareaRef.current;
+    if (el) {
+      el.focus();
+      el.setSelectionRange(prefillValue.length, prefillValue.length);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [prefillNonce, prefillValue]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {

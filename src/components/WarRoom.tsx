@@ -35,6 +35,15 @@ export default function WarRoom() {
   const [error, setError] = useState<string | null>(null);
   const [lastQuery, setLastQuery] = useState<string>("");
   const [provider, setProvider] = useState<Provider>("novita");
+  // Quick-deploy chips drop their text into CaseInput rather than auto-submitting,
+  // so the user sees the brief before hitting deploy. Nonce forces a re-run of
+  // CaseInput's effect even if the same chip is clicked twice.
+  const [prefillValue, setPrefillValue] = useState<string>("");
+  const [prefillNonce, setPrefillNonce] = useState<number>(0);
+  const prefillBrief = useCallback((q: string) => {
+    setPrefillValue(q);
+    setPrefillNonce((n) => n + 1);
+  }, []);
 
   // Case-file drawer state — independent of the main mission pipeline.
   const [caseFileOpen, setCaseFileOpen] = useState(false);
@@ -208,7 +217,7 @@ export default function WarRoom() {
       <Header caseNumber={payload?.case_number} status={phase} />
 
       <main className="relative z-10 mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 sm:py-8">
-        {phase === "idle" && <IdleHero onPick={handleSubmit} />}
+        {phase === "idle" && <IdleHero onPick={prefillBrief} />}
 
         <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1.35fr]">
           <div className="space-y-6">
@@ -222,7 +231,12 @@ export default function WarRoom() {
                 disabled={phase === "deploying"}
               />
             </div>
-            <CaseInput onSubmit={handleSubmit} disabled={phase === "deploying"} />
+            <CaseInput
+              onSubmit={handleSubmit}
+              disabled={phase === "deploying"}
+              prefillValue={prefillValue}
+              prefillNonce={prefillNonce}
+            />
 
             {phase === "deploying" && <LoadingSequence />}
 
