@@ -1,17 +1,21 @@
-import { gemmaJSON } from "@/lib/gemma";
+import { gemmaJSON, type Provider } from "@/lib/gemma";
+import { findCultureRedFlags } from "@/lib/datasources/reddit";
 import type {
   FundingIntel,
   HiringSignal,
   MissionBrief,
+  MoatBriefing,
   OSSIntel,
   ProfilerReport,
+  TopTarget,
 } from "./types";
 
 export async function runProfiler(
   mission: MissionBrief,
   funding: FundingIntel[],
   signals: HiringSignal[],
-  oss: OSSIntel[]
+  oss: OSSIntel[],
+  provider?: Provider
 ): Promise<ProfilerReport> {
   const system = `You are PROFILER, the lead analyst for IntelMaxxing.
 
@@ -42,6 +46,21 @@ Your job:
      - "Case cracked. [Company] just closed Series A — and they're hiring on HN, no cap. Off-grid, off-LinkedIn. Move."
      - "Intel dropped. [Company] — lean team, fresh money, good-first-issues wide open. This one's locked in. Go."
    Keep it tight. No fluff. No case number. No "move fast / case remains open".
+6. Write "moat_briefings": an array with ONE entry per company in the MOAT_COMPANIES list
+   below (these are funders flagged as likely-to-hire — the product's edge). Each entry:
+   { "company_name": string, "text": string }.
+   "text" = 35-55 words of spoken audio (≈15-20 sec). Same thick-spy / light Gen-Z tone as
+   intel_briefing_voice but tailored to THAT ONE company. Structure:
+     a) Open with company name + specific funding signal ("[Co] just closed [stage] for [amount]")
+     b) State what role/gap they likely have ("lean team · needs a founding [role]")
+     c) End with ONE concrete action the candidate should take TODAY ("Drop a cold email to
+        their CTO on HN", "Ship a PR on their repo", "Reply to the hiring post with [angle]")
+   One Gen-Z phrase max. No case number. No generic filler. Different flavor from hook.
+   Example:
+     "Starcloud — just bagged 170 million Series A, no cap. Lean infra team, they need a
+      founding engineer yesterday. Don't wait for the LinkedIn post. Scan their GitHub,
+      ship a PR on their OSS repo this week, then drop the CTO a line. Locked in."
+   If MOAT_COMPANIES is empty, return [].
 
 Respond ONLY with a JSON object:
 {
@@ -53,6 +72,7 @@ Respond ONLY with a JSON object:
   ],
   "intel_briefing_text": "...",
   "intel_briefing_voice": "...",
+  "moat_briefings": [ { "company_name": "...", "text": "..." }, ... ],
   "total_companies_analyzed": number,
   "total_signals_detected": number
 }
@@ -67,6 +87,15 @@ No markdown fences, no preamble.`;
   const totalSignals = funding.length + signals.length + oss.length;
 
   const caseNumber = `CASE-${Math.floor(Math.random() * 9000 + 1000)}`;
+  const moatCompanies = funding
+    .filter((f) => f.likely_to_hire)
+    .map((f) => ({
+      company_name: f.company_name,
+      funding_stage: f.funding_stage,
+      funding_amount: f.funding_amount,
+      industry: f.industry,
+      url: f.url,
+    }));
 
   const user = `CASE NUMBER: ${caseNumber}
 MISSION BRIEF: ${JSON.stringify(mission)}
@@ -80,6 +109,9 @@ ${JSON.stringify(signals, null, 2)}
 GHOSTNET REPORT:
 ${JSON.stringify(oss, null, 2)}
 
+MOAT_COMPANIES (write one moat_briefing per entry):
+${JSON.stringify(moatCompanies, null, 2)}
+
 Stats you can use if helpful:
 - total_companies_analyzed ≈ ${totalCompanies.size}
 - total_signals_detected ≈ ${totalSignals}`;
@@ -90,30 +122,83 @@ Stats you can use if helpful:
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      { max_tokens: 2500, temperature: 0.4 }
+      { max_tokens: 2500, temperature: 0.4, provider }
     );
 
-    // Safeguards
+    const topTargets = Array.isArray(out.top_targets) ? out.top_targets.slice(0, 5) : [];
+    const enrichedTargets = await enrichWithRedFlags(topTargets);
+    const moatBriefings = reconcileMoatBriefings(out.moat_briefings, funding);
+
     return {
-      top_targets: Array.isArray(out.top_targets) ? out.top_targets.slice(0, 5) : [],
+      top_targets: enrichedTargets,
       intel_briefing_text:
         out.intel_briefing_text ||
         buildFallbackBriefing(mission, funding, signals, oss, caseNumber),
       intel_briefing_voice:
         out.intel_briefing_voice ||
         buildFallbackVoiceHook(funding, signals, oss),
+      moat_briefings: moatBriefings,
       total_companies_analyzed: out.total_companies_analyzed ?? totalCompanies.size,
       total_signals_detected: out.total_signals_detected ?? totalSignals,
     };
   } catch {
+    const fallbackTargets = synthesizeFallback(funding, signals, oss);
+    const enrichedTargets = await enrichWithRedFlags(fallbackTargets);
     return {
-      top_targets: synthesizeFallback(funding, signals, oss),
+      top_targets: enrichedTargets,
       intel_briefing_text: buildFallbackBriefing(mission, funding, signals, oss, caseNumber),
       intel_briefing_voice: buildFallbackVoiceHook(funding, signals, oss),
+      moat_briefings: reconcileMoatBriefings(undefined, funding),
       total_companies_analyzed: totalCompanies.size,
       total_signals_detected: totalSignals,
     };
   }
+}
+
+/**
+ * Ensure we have one moat briefing per likely_to_hire funder. Uses what the model
+ * returned where possible, backfills missing ones with a deterministic template.
+ */
+function reconcileMoatBriefings(
+  fromModel: MoatBriefing[] | undefined,
+  funding: FundingIntel[]
+): MoatBriefing[] {
+  const moat = funding.filter((f) => f.likely_to_hire);
+  if (!moat.length) return [];
+  const byName = new Map<string, string>();
+  for (const b of fromModel || []) {
+    if (b?.company_name && b?.text) {
+      byName.set(b.company_name.toLowerCase(), b.text);
+    }
+  }
+  return moat.map((f) => ({
+    company_name: f.company_name,
+    text: byName.get((f.company_name || "").toLowerCase()) || buildFallbackMoatBriefing(f),
+  }));
+}
+
+function buildFallbackMoatBriefing(f: FundingIntel): string {
+  const amount = f.funding_amount && f.funding_amount !== "unknown" ? f.funding_amount : "fresh money";
+  const stage =
+    f.funding_stage && f.funding_stage !== "unknown" ? f.funding_stage.toUpperCase() : "new round";
+  const industry = f.industry && f.industry !== "unknown" ? f.industry : "the space";
+  return `${f.company_name} just closed ${stage} — ${amount}, no cap. Lean ${industry} team, they need someone yesterday. Don't wait for the LinkedIn post. Find the CTO, drop a cold email, attach your work. Locked in. Go.`;
+}
+
+/** Run reddit culture checks on each top target in parallel. Silently degrades. */
+async function enrichWithRedFlags(targets: TopTarget[]): Promise<TopTarget[]> {
+  if (!targets.length) return targets;
+  const results = await Promise.all(
+    targets.map(async (t) => {
+      try {
+        const flags = await findCultureRedFlags(t.company_name, 2);
+        return flags.length ? { ...t, red_flags: flags } : t;
+      } catch {
+        return t;
+      }
+    })
+  );
+  return results;
 }
 
 function buildFallbackVoiceHook(

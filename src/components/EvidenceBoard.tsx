@@ -2,6 +2,7 @@
 
 import type { InvestigationPayload } from "@/lib/agents/types";
 import CaseFileCard from "./CaseFileCard";
+import VoiceChip from "./VoiceChip";
 
 type Props = {
   payload: InvestigationPayload | null;
@@ -15,15 +16,72 @@ export default function EvidenceBoard({ payload }: Props) {
     (profiler.top_targets || []).slice(0, 3).map((t) => t.company_name.toLowerCase())
   );
 
+  // Moat: funders that closed in the last ~6 months (FOXHOUND flagged likely_to_hire).
+  // These are surfaced in a distinct section — this is the product's defensible edge.
+  const moat = funding.filter((f) => f.likely_to_hire);
+  const otherFunding = funding.filter((f) => !f.likely_to_hire);
+  const moatBriefingByName = new Map(
+    (profiler.moat_briefings || []).map((b) => [b.company_name.toLowerCase(), b.text])
+  );
+
   type Item = Parameters<typeof CaseFileCard>[0]["item"];
   const items: Item[] = [
-    ...funding.map((f) => ({ kind: "funding" as const, data: f })),
+    ...otherFunding.map((f) => ({ kind: "funding" as const, data: f })),
     ...signals.map((s) => ({ kind: "signal" as const, data: s })),
     ...oss.map((o) => ({ kind: "oss" as const, data: o })),
   ];
 
   return (
     <section>
+      {moat.length ? (
+        <div className="mb-8">
+          <div className="mb-3 flex items-center gap-3 text-[10px] tracking-[0.3em] text-[var(--stamp-red)]">
+            <span className="h-px flex-1 bg-[var(--stamp-red)]/40" />
+            <span>MOAT · LIKELY TO HIRE · {moat.length}</span>
+            <span className="h-px flex-1 bg-[var(--stamp-red)]/40" />
+          </div>
+          <div
+            className="corkboard relative overflow-hidden rounded-sm border-2 border-dashed border-[var(--stamp-red)] p-5 sm:p-6"
+            style={{
+              boxShadow: "inset 0 0 60px rgba(139,26,26,0.12), 0 0 0 1px rgba(139,26,26,0.2)",
+            }}
+          >
+            <div className="pointer-events-none absolute right-3 top-3">
+              <span className="stamp text-[10px]">FRESH MONEY · HIRING SOON</span>
+            </div>
+            <p className="mb-4 max-w-xl font-mono text-[11px] leading-relaxed tracking-[0.1em] text-[var(--text-secondary)]">
+              Closed funding in the last 6 months — they will staff up. Reach out before the job boards get them.
+            </p>
+            <div
+              className="relative z-10 grid gap-8 sm:gap-6"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}
+            >
+              {moat.map((f, idx) => {
+                const briefing = moatBriefingByName.get((f.company_name || "").toLowerCase());
+                return (
+                  <div key={`moat-${idx}`} className="flex flex-col gap-3">
+                    <CaseFileCard
+                      item={{ kind: "funding", data: f }}
+                      rot={((idx * 3) % 5) + 1}
+                      hot
+                    />
+                    {briefing ? (
+                      <div className="flex justify-center">
+                        <VoiceChip
+                          text={briefing}
+                          label="MOAT BRIEFING"
+                          sublabel={f.company_name}
+                          variant="moat"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="mb-3 flex items-center gap-3 text-[10px] tracking-[0.3em] text-[var(--text-muted)]">
         <span className="h-px flex-1 bg-[var(--border-subtle)]" />
         <span>EVIDENCE BOARD · {items.length} CASE FILES</span>
@@ -145,6 +203,43 @@ export default function EvidenceBoard({ payload }: Props) {
                     </ul>
                   </div>
                 ) : null}
+                {t.red_flags?.length ? (
+                  <div
+                    className="mt-3 rounded-sm border border-[var(--accent-red)]/60 bg-[var(--accent-red)]/10 p-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--accent-red)]">
+                        <span>⚠</span>
+                        <span>RED FLAGS · {t.red_flags.length} SIGNAL{t.red_flags.length > 1 ? "S" : ""}</span>
+                      </div>
+                      <VoiceChip
+                        text={buildWarningVoice(t.company_name, t.red_flags)}
+                        label="VOICE WARNING"
+                        variant="warning"
+                      />
+                    </div>
+                    <ul className="mt-1.5 space-y-1.5 text-[11.5px] leading-snug">
+                      {t.red_flags.slice(0, 2).map((f, i) => (
+                        <li key={i} className="flex flex-col gap-0.5">
+                          <span className="text-[var(--text-primary)]/85">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--accent-red)]">
+                              [{f.signal}]
+                            </span>{" "}
+                            {f.evidence}
+                          </span>
+                          <a
+                            href={f.permalink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-[9.5px] tracking-[0.15em] text-[var(--text-muted)] hover:text-[var(--accent-amber)]"
+                          >
+                            r/{f.subreddit} · ↗
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -152,4 +247,16 @@ export default function EvidenceBoard({ payload }: Props) {
       ) : null}
     </section>
   );
+}
+
+function buildWarningVoice(
+  company: string,
+  redFlags: { signal: string; subreddit: string }[]
+): string {
+  if (!redFlags?.length) return `Warning. ${company}. Vet before pitching.`;
+  const signals = redFlags.slice(0, 2).map((f) => f.signal);
+  const subs = Array.from(new Set(redFlags.map((f) => `r/${f.subreddit}`))).slice(0, 2);
+  const count = redFlags.length;
+  const signalList = signals.join(" and ");
+  return `Warning. Target ${company}. Reddit surfaced ${count} red flag${count > 1 ? "s" : ""}, including ${signalList}. Posted on ${subs.join(" and ")}. Proceed with caution. Vet the team before you pitch — and save the receipts.`;
 }

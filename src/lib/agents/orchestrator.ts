@@ -1,8 +1,8 @@
-import { gemmaJSON } from "@/lib/gemma";
+import { gemmaJSON, type Provider } from "@/lib/gemma";
 import type { MissionBrief } from "./types";
 
 /** Parse raw user input into a structured mission brief via Gemma. */
-export async function parseMission(raw: string): Promise<MissionBrief> {
+export async function parseMission(raw: string, provider?: Provider): Promise<MissionBrief> {
   const system = `You are the ORCHESTRATOR, the intake analyst for IntelMaxxing.
 Convert a user's free-form career mission into structured search parameters.
 
@@ -23,10 +23,13 @@ No preamble, no markdown fences.`;
     role_type: string;
     location: string;
     keywords: string[];
-  }>([
-    { role: "system", content: system },
-    { role: "user", content: raw },
-  ]);
+  }>(
+    [
+      { role: "system", content: system },
+      { role: "user", content: raw },
+    ],
+    { provider }
+  );
 
   return {
     raw,

@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "./Header";
 import CaseInput from "./CaseInput";
 import AgentPanel from "./AgentPanel";
 import EvidenceBoard from "./EvidenceBoard";
 import VoiceBriefing from "./VoiceBriefing";
 import LoadingSequence from "./LoadingSequence";
+import ProviderToggle, { type Provider } from "./ProviderToggle";
 import type {
   AgentCode,
   AgentStatus,
@@ -29,6 +30,21 @@ export default function WarRoom() {
   );
   const [payload, setPayload] = useState<InvestigationPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<Provider>("novita");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("gemma_provider");
+      if (saved === "ollama" || saved === "novita") setProvider(saved);
+    } catch {}
+  }, []);
+
+  const updateProvider = useCallback((p: Provider) => {
+    setProvider(p);
+    try {
+      localStorage.setItem("gemma_provider", p);
+    } catch {}
+  }, []);
 
   const handleSubmit = useCallback(async (query: string) => {
     setPhase("deploying");
@@ -77,7 +93,7 @@ export default function WarRoom() {
       const res = await fetch("/api/investigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, provider }),
       });
 
       if (!res.ok) {
@@ -104,7 +120,7 @@ export default function WarRoom() {
       });
       setPhase("error");
     }
-  }, []);
+  }, [provider]);
 
   const findings = useMemo<Partial<Record<AgentCode, number>>>(
     () =>
@@ -128,6 +144,16 @@ export default function WarRoom() {
 
         <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1.35fr]">
           <div className="space-y-6">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-mono text-[10px] tracking-[0.3em] text-[var(--text-muted)]">
+                INTEL MODEL
+              </span>
+              <ProviderToggle
+                value={provider}
+                onChange={updateProvider}
+                disabled={phase === "deploying"}
+              />
+            </div>
             <CaseInput onSubmit={handleSubmit} disabled={phase === "deploying"} />
 
             {phase === "deploying" && <LoadingSequence />}
@@ -166,25 +192,15 @@ export default function WarRoom() {
           </div>
         </div>
 
-        <footer className="mt-10 border-t border-[var(--border-subtle)] pt-5 text-[10px] tracking-[0.3em] text-[var(--text-muted)]">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span>INTELMAXXING · OPERATION INNOVATION</span>
-            <span>POWERED BY · GEMMA 4 · ELEVENLABS</span>
-            <a
-              href="https://intelmaxxing.tech"
-              className="hover:text-[var(--accent-amber)]"
-            >
-              INTELMAXXING.TECH
-            </a>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 border-t border-[var(--border-subtle)]/60 text-[9.5px] tracking-[0.22em]">
-            <span className="text-[var(--text-secondary)]">DATA SOURCES</span>
-            <span className="opacity-40">|</span>
-            <a href="https://news.ycombinator.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">HACKER NEWS</a>
-            <a href="https://remoteok.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">REMOTEOK</a>
-            <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">GITHUB</a>
-            <a href="https://startups.gallery" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-amber)]">STARTUPS.GALLERY</a>
-          </div>
+        <footer className="mt-10 flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-5 text-[10px] tracking-[0.3em] text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
+          <span>INTELMAXXING · OPERATION INNOVATION</span>
+          <span>POWERED BY · GEMMA 4 · ELEVENLABS</span>
+          <a
+            href="https://intelmaxxing.tech"
+            className="hover:text-[var(--accent-amber)]"
+          >
+            INTELMAXXING.TECH
+          </a>
         </footer>
       </main>
     </div>

@@ -1,29 +1,36 @@
-import { gemmaJSON } from "@/lib/gemma";
+import { gemmaJSON, type Provider } from "@/lib/gemma";
 import { searchStories } from "@/lib/datasources/hackernews";
 import { matchStartupsGallery } from "@/lib/datasources/startupsgallery";
 import type { FundingIntel, MissionBrief } from "./types";
 
-export async function runFoxhound(mission: MissionBrief): Promise<FundingIntel[]> {
+export async function runFoxhound(mission: MissionBrief, provider?: Provider): Promise<FundingIntel[]> {
   const industry = mission.industry || "startup";
-  const extra = mission.keywords.slice(0, 3).join(" ");
+  const extra = mission.keywords.slice(0, 2).join(" ");
 
-  // Multi-query sweep across HN
+  // HN Algolia full-text is picky with long queries; broader queries +
+  // 30-day recency filter + Gemma ranking gives better coverage than
+  // pre-filtering heavily by phrase.
   const queries = [
-    `${industry} raised seed funding`,
-    `${industry} Series A raised`,
-    `YC ${industry} ${extra}`,
-    `${industry} startup launched ${extra}`,
-  ];
+    `${industry} raised`,
+    `${industry} Series`,
+    `${industry} launches`,
+    `raised seed`,
+    `Series A`,
+    extra ? `${extra} raised` : "",
+  ].filter(Boolean);
 
   const resultSets = await Promise.all(
-    queries.map((q) => searchStories(q, 10).catch(() => []))
+    queries.map((q) => searchStories(q, 10, { sinceDays: 30 }).catch(() => []))
   );
   const all = resultSets.flat();
-  // De-dupe by title
+  // De-dupe by title; enforce a hard recency cutoff (30 days) as belt & braces
+  const cutoff = Date.now() - 30 * 86400 * 1000;
   const seen = new Set<string>();
   const hits = all.filter((h) => {
     const key = (h.title || "").toLowerCase().trim();
     if (!key || seen.has(key)) return false;
+    const ts = Date.parse(h.created_at || "");
+    if (!Number.isNaN(ts) && ts < cutoff) return false;
     seen.add(key);
     return true;
   });
@@ -67,7 +74,7 @@ ${JSON.stringify(evidence, null, 2)}`;
     const out = await gemmaJSON<FundingIntel[] | { results: FundingIntel[] }>([
       { role: "system", content: system },
       { role: "user", content: user },
-    ], { max_tokens: 1800, temperature: 0.25 });
+    ], { max_tokens: 1800, temperature: 0.25, provider });
 
     const arr = Array.isArray(out) ? out : out.results || [];
     const picked = arr.slice(0, 6);

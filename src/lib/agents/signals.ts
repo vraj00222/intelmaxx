@@ -1,4 +1,4 @@
-import { gemmaJSON } from "@/lib/gemma";
+import { gemmaJSON, type Provider } from "@/lib/gemma";
 import {
   searchShowHN,
   searchStories,
@@ -9,7 +9,7 @@ import { searchRemoteOK } from "@/lib/datasources/remoteok";
 import { matchStartupsGallery } from "@/lib/datasources/startupsgallery";
 import type { HiringSignal, MissionBrief } from "./types";
 
-export async function runWiretap(mission: MissionBrief): Promise<HiringSignal[]> {
+export async function runWiretap(mission: MissionBrief, provider?: Provider): Promise<HiringSignal[]> {
   const industry = mission.industry || "startup";
   const roleType = mission.role_type || "engineer";
   const kw = mission.keywords.slice(0, 3).join(" ");
@@ -129,7 +129,7 @@ ${JSON.stringify(evidence, null, 2)}`;
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      { max_tokens: 2000, temperature: 0.3 }
+      { max_tokens: 2000, temperature: 0.3, provider }
     );
     const arr = Array.isArray(out) ? out : out.results || [];
     const signals = arr.slice(0, 8);

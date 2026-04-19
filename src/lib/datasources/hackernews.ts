@@ -19,18 +19,34 @@ async function hn<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function searchStories(query: string, hitsPerPage = 15): Promise<HNHit[]> {
+type SearchOpts = { sinceDays?: number };
+
+function recencyFilter(sinceDays?: number): string {
+  if (!sinceDays || sinceDays <= 0) return "";
+  const ts = Math.floor((Date.now() - sinceDays * 86400 * 1000) / 1000);
+  return `&numericFilters=${encodeURIComponent(`created_at_i>${ts}`)}`;
+}
+
+export async function searchStories(
+  query: string,
+  hitsPerPage = 15,
+  opts: SearchOpts = {}
+): Promise<HNHit[]> {
   const q = encodeURIComponent(query);
   const data = await hn<{ hits: HNHit[] }>(
-    `/search?query=${q}&tags=story&hitsPerPage=${hitsPerPage}`
+    `/search?query=${q}&tags=story&hitsPerPage=${hitsPerPage}${recencyFilter(opts.sinceDays)}`
   );
   return data.hits || [];
 }
 
-export async function searchShowHN(query: string, hitsPerPage = 12): Promise<HNHit[]> {
+export async function searchShowHN(
+  query: string,
+  hitsPerPage = 12,
+  opts: SearchOpts = {}
+): Promise<HNHit[]> {
   const q = encodeURIComponent(query);
   const data = await hn<{ hits: HNHit[] }>(
-    `/search?query=${q}&tags=show_hn&hitsPerPage=${hitsPerPage}`
+    `/search?query=${q}&tags=show_hn&hitsPerPage=${hitsPerPage}${recencyFilter(opts.sinceDays)}`
   );
   return data.hits || [];
 }

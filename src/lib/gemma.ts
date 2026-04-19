@@ -1,34 +1,55 @@
 // Gemma wrapper — two-provider design.
 //
-// DEFAULT: Novita hosted Gemma 4 26B MoE (`google/gemma-4-26b-a4b-it`)
-// LOCAL:   Ollama with Gemma 3 (or any tag user has locally)
+// DEFAULT: Novita hosted Gemma 4 31B (`google/gemma-4-31b-it`) — the largest
+//          Gemma 4 instruct model available on Novita. Pinned deliberately; do
+//          not swap for smaller variants without updating the UI label.
+// LOCAL:   Ollama with any local Gemma 4 tag (e.g. `gemma4:e2b`)
 //
 // Switch providers by setting `GEMMA_PROVIDER=ollama` in env.
 //  - OLLAMA_BASE   (default http://localhost:11434)
-//  - OLLAMA_MODEL  (default gemma3:4b — change to whatever `ollama list` shows)
+//  - OLLAMA_MODEL  (default gemma4:e2b — change to whatever `ollama list` shows)
 
 const NOVITA_BASE = "https://api.novita.ai/v3/openai";
-const NOVITA_MODEL = "google/gemma-4-26b-a4b-it";
+export const NOVITA_MODEL = "google/gemma-4-31b-it";
 
 const OLLAMA_BASE = process.env.OLLAMA_BASE || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
+export const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 
 export type GemmaMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
+export type Provider = "novita" | "ollama";
+
 export type GemmaOptions = {
   temperature?: number;
   max_tokens?: number;
   json?: boolean;
+  provider?: Provider;
 };
 
-type Provider = "novita" | "ollama";
-function provider(): Provider {
+function envProvider(): Provider {
   return (process.env.GEMMA_PROVIDER || "novita").toLowerCase() === "ollama"
     ? "ollama"
     : "novita";
+}
+
+function resolveProvider(opts: GemmaOptions): Provider {
+  return opts.provider || envProvider();
+}
+
+/** Quick availability ping used by /api/provider. 400ms ceiling. */
+export async function isOllamaAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${OLLAMA_BASE}/api/tags`, {
+      signal: AbortSignal.timeout(400),
+      cache: "no-store",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 function getNovitaKey(): string {
@@ -41,7 +62,7 @@ export async function gemmaComplete(
   messages: GemmaMessage[],
   opts: GemmaOptions = {}
 ): Promise<string> {
-  return provider() === "ollama"
+  return resolveProvider(opts) === "ollama"
     ? ollamaComplete(messages, opts)
     : novitaComplete(messages, opts);
 }

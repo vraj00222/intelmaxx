@@ -1,23 +1,30 @@
-import { gemmaJSON } from "@/lib/gemma";
+import { gemmaJSON, type Provider } from "@/lib/gemma";
 import { searchRepos, countGoodFirstIssues, hasContributingGuide } from "@/lib/datasources/github";
 import type { OSSIntel, MissionBrief } from "./types";
 
-export async function runGhostnet(mission: MissionBrief): Promise<OSSIntel[]> {
+export async function runGhostnet(mission: MissionBrief, provider?: Provider): Promise<OSSIntel[]> {
   const industryQ = cleanQ(mission.industry);
   const kw = mission.keywords.slice(0, 2).map(cleanQ).join(" ");
 
-  // Mix a few query strategies
+  // Dynamic "pushed in the last 30 days" cutoff so queries always reflect "now".
+  const pushedCutoff = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
   const queries = [
-    `${industryQ} ${kw} stars:>100 pushed:>2025-10-01`,
-    `${industryQ} topic:${industryQ.split(" ")[0] || "ai"} stars:>200`,
-    `${kw || industryQ} stars:>300 language:typescript pushed:>2025-09-01`,
+    `${industryQ} ${kw} stars:>100 pushed:>${pushedCutoff}`,
+    `${industryQ} topic:${industryQ.split(" ")[0] || "ai"} stars:>200 pushed:>${pushedCutoff}`,
+    `${kw || industryQ} stars:>300 language:typescript pushed:>${pushedCutoff}`,
   ].filter(Boolean);
 
   const resultSets = await Promise.all(queries.map((q) => searchRepos(q, 8).catch(() => [])));
   const all = resultSets.flat();
 
+  // Belt & braces — drop anything older than 30 days in case search was lenient.
+  const cutoffMs = Date.now() - 30 * 86400 * 1000;
   const byId = new Map<number, (typeof all)[0]>();
-  for (const r of all) byId.set(r.id, r);
+  for (const r of all) {
+    const t = Date.parse(r.pushed_at || "");
+    if (!Number.isNaN(t) && t < cutoffMs) continue;
+    byId.set(r.id, r);
+  }
   const repos = [...byId.values()].sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, 10);
 
   if (repos.length === 0) return [];
@@ -82,7 +89,7 @@ ${JSON.stringify(enriched, null, 2)}`;
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      { max_tokens: 1600, temperature: 0.3 }
+      { max_tokens: 1600, temperature: 0.3, provider }
     );
     const arr = Array.isArray(out) ? out : out.results || [];
     return arr.slice(0, 5);

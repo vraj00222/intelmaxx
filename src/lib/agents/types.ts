@@ -45,6 +45,14 @@ export type OSSIntel = {
   entry_strategy: string;
 };
 
+export type RedFlag = {
+  signal: string;
+  evidence: string;
+  subreddit: string;
+  permalink: string;
+  score: number;
+};
+
 export type TopTarget = {
   rank: number;
   company_name: string;
@@ -52,12 +60,19 @@ export type TopTarget = {
   signals: string[];
   action_items: string[];
   rationale: string;
+  red_flags?: RedFlag[];
+};
+
+export type MoatBriefing = {
+  company_name: string;
+  text: string;
 };
 
 export type ProfilerReport = {
   top_targets: TopTarget[];
   intel_briefing_text: string;
   intel_briefing_voice: string;
+  moat_briefings?: MoatBriefing[];
   total_companies_analyzed: number;
   total_signals_detected: number;
 };
