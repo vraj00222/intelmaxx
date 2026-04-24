@@ -192,6 +192,13 @@ Each agent in `src/lib/agents/` is a single function that:
 - `VoiceBriefing.tsx` — toggles between the 15-second spy hook and the full 3-paragraph noir debrief
 - `VoiceChip.tsx` — compact play button for the per-company MOAT briefings and red-flag warnings
 - `ProviderToggle.tsx` — pill toggle showing `NOVITA (google/gemma-4-31b-it)` / `OLLAMA (gemma4:e2b)`
+<img width="1507" height="786" alt="Screenshot 2026-04-19 at 3 00 00 AM" src="https://github.com/user-attachments/assets/bd3c3dc4-8332-4a26-98b3-429b18c81c8a" />
+<img width="1499" height="816" alt="Screenshot 2026-04-19 at 2 59 43 AM" src="https://github.com/user-attachments/assets/58947a35-0a6b-4928-9aa9-fab5e12746d1" />
+<img width="1495" height="817" alt="Screenshot 2026-04-19 at 3 00 41 AM" src="https://github.com/user-attachments/assets/c72ca741-3810-4791-92d5-faeb6caa7ebd" />
+<img width="1507" height="822" alt="Screenshot 2026-04-19 at 3 01 14 AM" src="https://github.com/user-attachments/assets/ed1437fe-d2fd-40ee-a878-08b0b588ff6e" />
+<img width="739" height="814" alt="Screenshot 2026-04-19 at 3 01 23 AM" src="https://github.com/user-attachments/assets/cadb4e0b-a183-4963-804d-2f42443efbd8" />
+<img width="845" height="776" alt="Screenshot 2026-04-19 at 3 01 33 AM" src="https://github.com/user-attachments/assets/c5b1ab90-59bb-4e5a-8746-c1a9ab39377d" />
+<img width="1490" height="819" alt="Screenshot 2026-04-19 at 3 01 51 AM" src="https://github.com/user-attachments/assets/f745690e-466c-46dd-bdcb-44b666a47fac" />
 
 ---
 
